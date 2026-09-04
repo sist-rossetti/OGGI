@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OGGI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Caveat:wght@400;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FCFCFC; --card:#FFFFFF; --sutil:#FCFCFD; --tablero:#FBFAF8;
+  --borde:#EFEFF1; --borde-suave:#F2F2F4; --borde-fino:#F4F4F6;
+  --txt:#3B3B3F; --txt2:#7C7C82; --txt3:#9A9AA0; --txt4:#A5A5AB; --txt5:#B0B0B6;
+  --sel-bg:#EDF3FA; --sel-fg:#41586F; --primario:#3B3B3F; --primario-h:#55555A;
+  --peligro:#B98C8C; --alerta:#F0B7B7; --seg:#B8A9C9;
+  --enlace:#7FA6D8; --enlace-h:#5F87BC; --foco:#E4EDF7; --placeholder:#BFBFC4;
+  --scroll:#E8E8EA; --overlay:rgba(255,255,255,.6); --overlay2:rgba(255,255,255,.8);
+  --sombra:rgba(60,60,70,.12); --blob1:#EAF1FA; --blob2:#F7EFE6;
+  color-scheme: light;
+}
+:root[data-tema="noche"]{
+  --bg:#17171A; --card:#1F1F23; --sutil:#232327; --tablero:#1B1B1E;
+  --borde:#2E2E33; --borde-suave:#28282C; --borde-fino:#242428;
+  --txt:#E7E7EA; --txt2:#AAAAB1; --txt3:#8C8C93; --txt4:#7C7C84; --txt5:#6E6E76;
+  --sel-bg:#22303F; --sel-fg:#9DC2E8; --primario:#E7E7EA; --primario-h:#C9C9CD;
+  --peligro:#D79E9E; --alerta:#C98F8F; --seg:#C7B7DC;
+  --enlace:#8FB6E6; --enlace-h:#AEC9EE; --foco:#2C3B4C; --placeholder:#5A5A60;
+  --scroll:#333338; --overlay:rgba(255,255,255,.08); --overlay2:rgba(255,255,255,.12);
+  --sombra:rgba(0,0,0,.35); --blob1:#1F2A36; --blob2:#2A241E;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:Montserrat,Helvetica,sans-serif;color:var(--txt);-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
+a{color:var(--enlace);text-decoration:none}
+a:hover{color:var(--enlace-h)}
+input,textarea,button,select{font-family:inherit;color:inherit;font-size:inherit}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--foco);outline-offset:1px}
+textarea{resize:none}
+::placeholder{color:var(--placeholder)}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:8px}
+@keyframes softpulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes gira{to{transform:rotate(360deg)}}
+
+.oculto{display:none !important}
+.tarjeta{background:var(--card);border:1px solid var(--borde);border-radius:24px}
+.rotulo{font-size:12px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--txt2)}
+.mini{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--txt4)}
+.campo{border:1px solid var(--borde);border-radius:14px;padding:12px 14px;font-size:14px;background:var(--sutil);width:100%}
+.pill{border:1px solid var(--borde);background:var(--card);border-radius:999px;padding:8px 16px;font-size:12px;color:var(--txt2);cursor:pointer;white-space:nowrap}
+.pill:hover{border-color:var(--sel-fg)}
+.primario{border:none;background:var(--primario);color:var(--card);border-radius:14px;padding:12px 20px;font-size:14px;font-weight:500;cursor:pointer}
+.primario:hover{background:var(--primario-h)}
+.icono{border:none;background:transparent;cursor:pointer;color:var(--txt5);font-size:15px;line-height:1;padding:2px 4px}
+.icono:hover{color:var(--txt2)}
+.redondo{border:1px solid var(--borde);background:var(--card);color:var(--txt);border-radius:50%;width:34px;height:34px;font-size:15px;cursor:pointer}
+
+/* login */
+#acceso{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden}
+#acceso .blob1{position:absolute;top:-120px;left:-80px;width:340px;height:340px;border-radius:50%;background:var(--blob1)}
+#acceso .blob2{position:absolute;bottom:-140px;right:-60px;width:300px;height:300px;border-radius:50%;background:var(--blob2)}
+#acceso .caja{position:relative;width:100%;max-width:390px;background:var(--card);border:1px solid var(--borde);border-radius:28px;padding:38px 32px;box-shadow:0 18px 44px var(--sombra)}
+.marca{display:flex;align-items:center;gap:10px}
+.marca i{width:30px;height:30px;border-radius:10px;background:var(--sel-bg);display:block}
+.marca span{font-size:22px;font-weight:600;letter-spacing:.22em}
+
+/* cabecera */
+header{position:sticky;top:0;z-index:20;background:color-mix(in srgb, var(--bg) 92%, transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--borde)}
+header .fila{max-width:1320px;margin:0 auto;padding:14px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-right:auto}
+nav button{border:none;background:transparent;color:var(--txt2);cursor:pointer;padding:9px 18px;border-radius:999px;font-size:13px;font-weight:500;transition:background .18s,color .18s}
+nav button.on{background:var(--sel-bg);color:var(--sel-fg)}
+#buscador{width:180px;border:1px solid var(--borde);border-radius:999px;padding:9px 15px;font-size:12px;background:var(--card);color:var(--txt)}
+#resultados{position:absolute;top:46px;right:0;width:320px;max-height:64vh;overflow-y:auto;background:var(--card);border:1px solid var(--borde);border-radius:18px;box-shadow:0 16px 36px var(--sombra);padding:8px;z-index:40}
+#resultados button{width:100%;text-align:left;border:none;background:transparent;cursor:pointer;border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;color:var(--txt)}
+#resultados button:hover{background:var(--sutil)}
+
+/* recordatorios y menú de cuenta */
+.panel-flot{position:absolute;top:46px;right:0;width:300px;max-height:64vh;overflow-y:auto;background:var(--card);border:1px solid var(--borde);border-radius:18px;box-shadow:0 16px 36px var(--sombra);padding:14px;z-index:41}
+.panel-flot button.pill{border-radius:12px}
+.campana{position:relative}
+.campana .punto{position:absolute;top:2px;right:2px;background:var(--peligro);color:#FFF;border-radius:999px;font-size:9px;line-height:1;min-width:15px;height:15px;display:flex;align-items:center;justify-content:center;padding:0 3px}
+
+main{max-width:1320px;width:100%;margin:0 auto;padding:26px 22px 60px}
+.dos{display:flex;gap:52px;align-items:flex-start}
+.dos>.izq{flex:0 0 320px}
+.dos>.der{flex:1;min-width:0}
+.cal{display:flex;gap:24px;align-items:flex-start}
+.cal>.principal{flex:1;min-width:0}
+.cal>.lateral{flex:0 0 330px}
+
+/* notas */
+#tablero{position:relative;width:100%;border-radius:20px;background:var(--tablero);border:1px solid var(--borde-suave);overflow:hidden}
+.nota{position:absolute;width:206px;height:206px;padding:10px 14px 30px;border-radius:3px;box-shadow:0 6px 14px var(--sombra);transition:box-shadow .2s}
+.nota:hover{box-shadow:0 12px 22px var(--sombra)}
+.nota .asa{height:12px;margin:-5px -8px 5px;cursor:grab;display:flex;justify-content:center;align-items:center;opacity:.35}
+.nota .asa i{width:20px;height:2px;border-radius:2px;background:var(--txt2);display:block}
+.nota textarea{width:100%;height:148px;border:none;background:transparent;line-height:1.4;color:#4A4A4E}
+.nota svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.nota .lienzo{position:absolute;inset:0;border-radius:3px;cursor:crosshair}
+.nota .pie{position:absolute;left:10px;right:8px;bottom:6px;display:flex;align-items:center;gap:3px}
+.nota .pie .sw{width:9px;height:9px;padding:0;border-radius:50%;border:1px solid rgba(0,0,0,.10);cursor:pointer;flex:0 0 auto}
+
+/* calendario */
+.grid7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.dia{cursor:pointer;text-align:left;min-width:0;overflow:hidden;min-height:88px;padding:9px;border-radius:14px;border:1px solid var(--borde-suave);background:var(--card);display:flex;flex-direction:column;gap:5px}
+.dia:hover{border-color:var(--sel-fg)}
+.dia.hoy{background:var(--sel-bg);border-color:var(--sel-fg)}
+.dia.fuera{background:var(--sutil);color:var(--txt4)}
+.chip{font-size:10px;padding:2px 6px;border-radius:6px;color:#3B3B3F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hora{display:flex;gap:12px;min-height:46px;border-top:1px solid var(--borde-suave);padding:6px 0}
+.bloque{cursor:grab;padding:8px 12px;border-radius:12px;font-size:13px;display:flex;gap:10px;align-items:center}
+.segmento{display:flex;gap:4px;background:var(--sutil);border-radius:999px;padding:3px}
+.segmento button{border:none;background:transparent;color:var(--txt3);border-radius:999px;padding:7px 14px;font-size:12px;cursor:pointer}
+.segmento button.on{background:var(--card);color:var(--sel-fg)}
+
+/* tareas */
+.tarea{display:flex;gap:14px;align-items:center;background:var(--card);border:1px solid var(--borde);border-radius:18px;padding:14px 16px}
+.tarea:hover{border-color:var(--sel-fg)}
+.check{flex:0 0 auto;width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid var(--borde-suave);background:var(--card);display:flex;align-items:center;justify-content:center;font-size:11px;color:#FFF}
+.etq{flex:0 0 auto;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#3B3B3F;border-radius:999px;padding:4px 10px}
+
+/* proyectos */
+.pcard{cursor:pointer;text-align:left;border:1px solid var(--borde);background:var(--card);border-radius:22px;padding:0;overflow:hidden;display:flex;flex-direction:column;min-height:210px}
+.pcard:hover{box-shadow:0 12px 26px var(--sombra)}
+.barra{height:6px;border-radius:6px;background:var(--borde-suave);overflow:hidden}
+.barra i{display:block;height:100%;border-radius:6px;transition:width .3s}
+
+/* hábitos */
+.celda{width:34px;height:34px;border-radius:11px;cursor:pointer;border:1px solid var(--borde);background:var(--sutil);font-size:12px;color:var(--txt2)}
+
+.cargando{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:100}
+.cargando i{width:26px;height:26px;border-radius:50%;border:2px solid var(--borde);border-top-color:var(--sel-fg);animation:gira .8s linear infinite;display:block}
+#aviso{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--primario);color:var(--card);border-radius:999px;padding:10px 20px;font-size:13px;z-index:120;opacity:0;transition:opacity .25s;pointer-events:none}
+#aviso.ver{opacity:1}
+
+@media (max-width:900px){
+  .dos,.cal{flex-direction:column;gap:24px}
+  .dos>.izq,.cal>.lateral{flex:1 1 auto;width:100%}
+  header .fila{gap:10px}
+  #buscador{width:120px}
+}
+</style>
+</head>
+<body>
+  <div class="cargando" id="cargando"><i></i></div>
+  <div id="acceso" class="oculto"></div>
+  <div id="app" class="oculto"></div>
+  <div id="aviso"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -52,9 +52,22 @@ export async function leerPerfil() {
 }
 
 export async function guardarPerfil(campos) {
-  const { data: { user } } = await sb.auth.getUser();
-  const { error } = await sb.from('perfiles').upsert({ id: user.id, ...campos });
+  return conReintento(async () => {
+    const { data: { user } } = await sb.auth.getUser();
+    const { error } = await sb.from('perfiles').upsert({ id: user.id, ...campos });
+    if (error) throw error;
+  });
+}
+
+/* ---------- cuenta ---------- */
+
+// Borra la cuenta entera (correo, contraseña y todos los datos, vía
+// on delete cascade). Requiere la Edge Function "borrar-cuenta"
+// desplegada en el proyecto de Supabase.
+export async function borrarCuenta() {
+  const { data, error } = await sb.functions.invoke('borrar-cuenta');
   if (error) throw error;
+  if (data?.error) throw new Error(data.error);
 }
 
 /* ---------- CRUD genérico ---------- */
@@ -71,26 +84,34 @@ export async function traerTodo() {
 }
 
 export async function crear(tabla, fila) {
-  const { data, error } = await sb.from(tabla).insert(fila).select().single();
-  if (error) throw error;
-  return data;
+  return conReintento(async () => {
+    const { data, error } = await sb.from(tabla).insert(fila).select().single();
+    if (error) throw error;
+    return data;
+  });
 }
 
 export async function actualizar(tabla, id, campos) {
-  const { error } = await sb.from(tabla).update(campos).eq('id', id);
-  if (error) throw error;
+  return conReintento(async () => {
+    const { error } = await sb.from(tabla).update(campos).eq('id', id);
+    if (error) throw error;
+  });
 }
 
 export async function borrar(tabla, id) {
-  const { error } = await sb.from(tabla).delete().eq('id', id);
-  if (error) throw error;
+  return conReintento(async () => {
+    const { error } = await sb.from(tabla).delete().eq('id', id);
+    if (error) throw error;
+  });
 }
 
 export async function borrarDonde(tabla, filtro) {
-  let q = sb.from(tabla).delete();
-  Object.entries(filtro).forEach(([k, v]) => { q = q.eq(k, v); });
-  const { error } = await q;
-  if (error) throw error;
+  return conReintento(async () => {
+    let q = sb.from(tabla).delete();
+    Object.entries(filtro).forEach(([k, v]) => { q = q.eq(k, v); });
+    const { error } = await q;
+    if (error) throw error;
+  });
 }
 
 /* ---------- importar un respaldo (el JSON que genera "Exportar") ---------- */
@@ -152,3 +173,44 @@ export function guardarConRetardo(clave, fn, ms = 600) {
   clearTimeout(pendientes.get(clave));
   pendientes.set(clave, setTimeout(() => { pendientes.delete(clave); fn(); }, ms));
 }
+
+/* ---------- aviso de sin conexión + reintento ----------
+   Si una escritura falla por caída de red (no por un error del servidor),
+   queda en espera y se reintenta sola apenas vuelve la conexión. */
+
+let sinConexion = false;
+let avisar = null;
+const cola = [];
+
+export function alCambiarConexion(fn) { avisar = fn; }
+
+function esErrorDeRed(e) {
+  return e instanceof TypeError || /failed to fetch|network|fetch/i.test(e?.message || '');
+}
+
+function marcar(v) {
+  if (sinConexion === v) return;
+  sinConexion = v;
+  avisar?.(v);
+}
+
+function conReintento(fn) {
+  return fn().then(
+    r => { marcar(false); return r; },
+    e => {
+      if (!esErrorDeRed(e)) throw e;
+      marcar(true);
+      return new Promise((resolve, reject) => cola.push({ fn, resolve, reject }));
+    }
+  );
+}
+
+addEventListener('online', async () => {
+  if (!cola.length) return marcar(false);
+  const pend = cola.splice(0, cola.length);
+  for (const item of pend) {
+    try { item.resolve(await item.fn()); }
+    catch (e) { esErrorDeRed(e) ? cola.push(item) : item.reject(e); }
+  }
+  marcar(cola.length > 0);
+});

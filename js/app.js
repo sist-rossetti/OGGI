@@ -59,6 +59,12 @@ async function seguro(fn) {
   catch (e) { console.error(e); aviso('No se pudo guardar: ' + (e.message || 'error de conexión')); }
 }
 
+db.alCambiarConexion(caido => {
+  estado.ui.sinConexion = caido;
+  aviso(caido ? 'Sin conexión: tus cambios se reintentarán solos.' : 'Conexión recuperada, guardando lo pendiente.');
+  if (estado.datos) render();
+});
+
 /* ------------------------------------------------------------------ */
 /* estado                                                              */
 /* ------------------------------------------------------------------ */
@@ -73,7 +79,8 @@ const estado = {
     evColor: 2, varCat: 'Comida',
     borradores: {},
     modoAcceso: 'entrar', errorAcceso: '',
-    tema: temaGuardado, panelRecordatorios: false, panelCuenta: false
+    tema: temaGuardado, panelRecordatorios: false, panelCuenta: false,
+    sinConexion: false
   }
 };
 const b = (k, v) => { if (v !== undefined) estado.ui.borradores[k] = v; return estado.ui.borradores[k] ?? ''; };
@@ -209,6 +216,7 @@ function render() {
       <div style="position:relative;display:flex;align-items:center;gap:8px">
         <input id="buscador" data-f="q" placeholder="Buscar en todo…" value="${esc(u.q)}">
         ${u.q.trim() ? buscar() : ''}
+        ${u.sinConexion ? `<span title="Sin conexión: tus cambios se reintentarán solos" style="font-size:16px">📡</span>` : ''}
         <div class="campana" data-panel>
           <button class="redondo" data-acc="panelRecordatorios" title="Recordatorios">🔔</button>
           ${recs.length ? `<span class="punto">${recs.length}</span>` : ''}
@@ -266,6 +274,7 @@ function panelCuentaHTML() {
     <button class="pill" style="width:100%;margin-bottom:8px;text-align:left" data-acc="exportar">⤓ Respaldar mis datos</button>
     <button class="pill" style="width:100%;margin-bottom:8px;text-align:left" data-acc="importarClick">⤒ Importar un respaldo</button>
     <button class="pill" style="width:100%;margin-bottom:8px;text-align:left;color:var(--peligro)" data-acc="borrarTodo">Borrar todos mis datos</button>
+    <button class="pill" style="width:100%;margin-bottom:8px;text-align:left;color:var(--peligro)" data-acc="borrarCuenta">Eliminar mi cuenta</button>
     <div style="border-top:1px solid var(--borde-suave);margin:10px 0"></div>
     <button class="pill" style="width:100%;text-align:left" data-acc="salir">Cerrar sesión</button>
   </div>`;
@@ -949,6 +958,16 @@ const ACCIONES = {
     await db.borrarTodoMisDatos();
     await cargar();
     aviso('Tus datos fueron borrados.');
+  }),
+  borrarCuenta: () => seguro(async () => {
+    if (!confirm('Esto elimina tu cuenta de OGGI para siempre: tu correo, tu contraseña y todos tus datos (notas, eventos, tareas, proyectos, hábitos y dinero). No se puede deshacer.\n\n¿Eliminar tu cuenta?')) return;
+    if (!confirm('Última confirmación: no vas a poder volver a entrar con este correo. ¿Eliminar la cuenta definitivamente?')) return;
+    estado.ui.panelCuenta = false;
+    await db.borrarCuenta();
+    try { await db.salir(); } catch (e) {}
+    estado.datos = null;
+    mostrarAcceso();
+    aviso('Tu cuenta fue eliminada.');
   }),
 
   nuevaNota: () => seguro(async () => {

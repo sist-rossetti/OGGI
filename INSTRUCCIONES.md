@@ -57,7 +57,19 @@ Por defecto Supabase le manda un correo de confirmación a cada persona que se r
 
 Ojo: el servicio de correo gratuito de Supabase manda pocos mensajes por hora. Cuando tengas usuarios de verdad vas a necesitar conectar un servicio de correo (Resend, SendGrid) en Authentication → Emails → SMTP.
 
-## Paso 4 · Publicar la app (5 min)
+## Paso 4 · Habilitar el borrado de cuenta (5 min, opcional pero recomendado)
+
+Esto hace falta si vas a abrir OGGI al público: cada persona tiene que poder
+borrar su cuenta por su cuenta, sin pedírtelo a vos. Requiere la CLI de Supabase.
+
+1. Instalá la CLI: `npm install -g supabase` (o seguí la guía oficial de Supabase para tu sistema).
+2. En una terminal, parado en esta carpeta: `supabase login` y después `supabase link --project-ref TU-REF` (la ref está en la URL del proyecto, `https://TU-REF.supabase.co`).
+3. Desplegá la función: `supabase functions deploy borrar-cuenta`.
+4. Listo. No hace falta configurar ninguna variable: `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` ya están disponibles solas dentro de la función.
+
+Si te salteás este paso, el botón "Eliminar mi cuenta" del menú de la cabecera va a mostrar un error al usarse. El resto de la app funciona igual sin esto.
+
+## Paso 5 · Publicar la app (5 min)
 
 La app no necesita compilarse: son archivos sueltos.
 
@@ -92,13 +104,17 @@ Para ver los datos con tus propios ojos: Supabase → **Table Editor**.
 
 ---
 
+## Lo que ya está
+
+- **Modo noche**, con interruptor sol/luna en la cabecera y la preferencia guardada en el dispositivo.
+- **Campana de recordatorios** 🔔 con los eventos de hoy/mañana y los proyectos por vencer.
+- **Importar un respaldo**: el JSON que genera el botón ⤓ se puede volver a subir con ⤒, agregando o reemplazando tus datos.
+- **Borrar la cuenta**: botón "Eliminar mi cuenta" en el menú ⚙. Necesita el Paso 4 de más arriba para funcionar.
+- **Aviso de sin conexión**: si una escritura falla por falta de red, aparece un ícono 📡 en la cabecera y el cambio se reintenta solo apenas vuelve la conexión (sin recargar la página).
+
 ## Lo que todavía no está
 
-1. **Modo noche** con interruptor sol/luna. Los colores ya están todos como variables al inicio de `index.html`, así que es un cambio acotado.
-2. **Campana de recordatorios** dentro de la app.
-3. **Importar** un respaldo (hoy solo se puede exportar).
-4. **Borrar la cuenta** — si la abrís al público, esto deja de ser opcional: en varios países es obligatorio por ley de datos personales.
-5. Los cambios se guardan uno por uno; si se corta internet en el medio, ese cambio se pierde. Un aviso de "sin conexión" sería lo próximo.
+Nada crítico por ahora. Ideas para más adelante: recordatorios por notificación del sistema (hoy la campana solo muestra la lista dentro de la app), y exportar/backup automático programado.
 
 ## Antes de abrirlo al público
 

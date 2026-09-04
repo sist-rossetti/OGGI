@@ -27,18 +27,28 @@ Mantené ese enfoque salvo que te pida lo contrario.
 5. Si agregás una tabla: creala en `esquema.sql` **con su política RLS**, sumala a `db.TABLAS`,
    y recién ahí usala en `app.js`.
 
-**Tareas pendientes, en orden de prioridad**
+**Estado actual**
 
-1. **Borrado de cuenta.** Necesario para abrir al público. Requiere una Edge Function de Supabase
-   con `service_role` que llame a `auth.admin.deleteUser`; el `on delete cascade` del esquema
-   limpia el resto. Agregá la confirmación en la interfaz.
-2. **Modo noche** con interruptor sol/luna en la cabecera. Todos los colores ya son variables CSS
-   en `:root`; definí un bloque `[data-tema="noche"]` con los equivalentes oscuros y guardá la
-   preferencia en `localStorage`. Los pasteles deben bajar saturación, no volverse fluorescentes.
-3. **Campana de recordatorios**: icono en la cabecera con la cantidad de eventos de hoy que aún no
-   pasaron más las tareas vencidas; al abrirla, la lista. Sin notificaciones del sistema por ahora.
-4. **Importar respaldo**: leer el JSON que produce el botón ⤓ y volcarlo a las tablas del usuario actual.
-5. **Aviso de sin conexión**: si una escritura falla por red, marcarla y reintentar.
+Las cinco tareas que estaban pendientes ya están resueltas:
+
+1. **Borrado de cuenta.** Edge Function `supabase/functions/borrar-cuenta/index.ts` con
+   `service_role` que llama a `auth.admin.deleteUser` (el `on delete cascade` del esquema limpia
+   el resto). `db.borrarCuenta()` la invoca; el botón "Eliminar mi cuenta" del menú ⚙ pide doble
+   confirmación. Hay que desplegarla con `supabase functions deploy borrar-cuenta` (ver
+   INSTRUCCIONES.md, Paso 4) — sin eso el botón muestra un error al usarse.
+2. **Modo noche**: interruptor ☾/☀ en la cabecera, bloque `[data-tema="noche"]` en `index.html`
+   y preferencia en `localStorage` (`oggi-tema`).
+3. **Campana de recordatorios**: función `recordatorios()` en `app.js`, ícono 🔔 con contador.
+4. **Importar respaldo**: `db.importarTodo()` + input de archivo oculto (`#importFile`), con opción
+   de agregar o reemplazar.
+5. **Aviso de sin conexión**: `db.js` envuelve `crear/actualizar/borrar/guardarPerfil` con
+   `conReintento()`; si falla por red, encola el cambio y lo reintenta solo al evento `online`.
+   `db.alCambiarConexion(fn)` avisa a `app.js`, que muestra un ícono 📡 en la cabecera.
+
+**Próximas tareas posibles** (no hay nada urgente pedido todavía; preguntá antes de asumir prioridad)
+
+- Notificaciones del sistema para los recordatorios (hoy solo viven dentro de la app).
+- Backups automáticos programados, además del botón manual ⤓.
 
 **Cómo probar**
 Levantá un servidor local (`npx serve oggi-app`) — abrir el archivo directamente no funciona por

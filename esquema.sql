@@ -37,8 +37,10 @@ create table if not exists notas (
   fuente smallint default 1,         -- 0 Montserrat, 1 Caveat, 2 Space Mono
   x real, y real, z int default 1,   -- posición en el tablero (null = auto)
   trazos jsonb default '[]'::jsonb,  -- [{ id, color, pts }]
+  senalador smallint,                -- 0-3, índice de forma (null = sin señalador)
   actualizado_en timestamptz default now()
 );
+alter table notas add column if not exists senalador smallint;
 
 -- ---------------------------------------------------------------
 -- Eventos del calendario
@@ -170,6 +172,25 @@ create table if not exists ahorros (
 );
 create index if not exists ahorros_user_fecha on ahorros (user_id, fecha desc);
 
+-- Ahorro programado: como gastos_fijos pero al revés (un monto mensual que
+-- se planea ahorrar, con un check de "cumplido este mes" separado).
+create table if not exists ahorros_programados (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  nombre text not null,
+  monto numeric default 0,
+  color smallint default 0,
+  creado_en timestamptz default now()
+);
+
+create table if not exists ahorros_programados_pagos (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  ahorro_id uuid not null references ahorros_programados on delete cascade,
+  mes text not null,                 -- 'YYYY-MM'
+  unique (ahorro_id, mes)
+);
+
 -- ---------------------------------------------------------------
 -- Seguridad: cada persona solo ve y toca SUS filas.
 -- Esta parte es la que hace que OGGI sea multicliente de verdad.
@@ -180,7 +201,7 @@ begin
   foreach t in array array[
     'perfiles','notas','eventos','tareas','proyectos','proyecto_pasos','proyecto_notas',
     'habitos','habito_marcas','gastos_fijos','gastos_fijos_pagos','gastos_variables',
-    'ingresos','ahorros'
+    'ingresos','ahorros','ahorros_programados','ahorros_programados_pagos'
   ] loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists "propio" on %I', t);

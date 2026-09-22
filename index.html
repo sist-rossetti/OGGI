@@ -42,6 +42,8 @@ textarea{resize:none}
 ::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:8px}
 @keyframes softpulse{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes gira{to{transform:rotate(360deg)}}
+@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.3)}100%{transform:scale(1)}}
+.pop{animation:pop .32s cubic-bezier(.34,1.56,.64,1)}
 
 .oculto{display:none !important}
 .tarjeta{background:var(--card);border:1px solid var(--borde);border-radius:24px}

@@ -9,7 +9,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 export const TABLAS = [
   'notas', 'eventos', 'tareas', 'proyectos', 'proyecto_pasos', 'proyecto_notas',
   'habitos', 'habito_marcas', 'gastos_fijos', 'gastos_fijos_pagos',
-  'gastos_variables', 'ingresos', 'ahorros'
+  'gastos_variables', 'ingresos', 'ahorros', 'ahorros_programados', 'ahorros_programados_pagos'
 ];
 
 /* ---------- sesión ---------- */
@@ -120,11 +120,11 @@ export async function borrarDonde(tabla, filtro) {
 const ORDEN_IMPORT = [
   'notas', 'eventos', 'tareas', 'proyectos', 'proyecto_pasos', 'proyecto_notas',
   'habitos', 'habito_marcas', 'gastos_fijos', 'gastos_fijos_pagos',
-  'gastos_variables', 'ingresos', 'ahorros'
+  'gastos_variables', 'ingresos', 'ahorros', 'ahorros_programados', 'ahorros_programados_pagos'
 ];
 // Tablas "padre": borrarlas alcanza, porque el resto cuelga de ellas con
 // "on delete cascade" (ver esquema.sql).
-const TABLAS_PADRE = ['notas', 'eventos', 'tareas', 'proyectos', 'habitos', 'gastos_fijos', 'gastos_variables', 'ingresos', 'ahorros'];
+const TABLAS_PADRE = ['notas', 'eventos', 'tareas', 'proyectos', 'habitos', 'gastos_fijos', 'gastos_variables', 'ingresos', 'ahorros', 'ahorros_programados'];
 
 export async function importarTodo(datos, modo = 'agregar') {
   const { data: { user } } = await sb.auth.getUser();

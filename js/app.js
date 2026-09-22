@@ -32,6 +32,7 @@ const NW = 206, NGAP = 18, NPAD = 14;
 /* ------------------------------------------------------------------ */
 const pad = n => String(n).padStart(2, '0');
 const kf = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const lunesDe = d => { const diff = (d.getDay() + 6) % 7; return new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff); };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 const num = v => { const n = parseFloat(String(v).replace(/[^\d.,-]/g, '').replace(',', '.')); return isNaN(n) ? 0 : n; };
 const money = n => '$' + Math.round(n).toLocaleString('es-AR');
@@ -80,7 +81,7 @@ const estado = {
     borradores: {},
     modoAcceso: 'entrar', errorAcceso: '',
     tema: temaGuardado, panelRecordatorios: false, panelCuenta: false,
-    sinConexion: false
+    sinConexion: false, habitosSemana: null
   }
 };
 const b = (k, v) => { if (v !== undefined) estado.ui.borradores[k] = v; return estado.ui.borradores[k] ?? ''; };
@@ -703,8 +704,12 @@ function vProyectos() {
 /* ------------------------------------------------------------------ */
 function vHabitos() {
   const d = D(), n = estado.ui.ahora, hoy = kf(n);
+  if (!estado.ui.habitosSemana) estado.ui.habitosSemana = kf(lunesDe(n));
+  const inicio = new Date(estado.ui.habitosSemana + 'T00:00:00');
+  const fin = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + 6);
+  const esSemanaActual = estado.ui.habitosSemana === kf(lunesDe(n));
   const dias = Array.from({ length: 7 }, (_, i) => {
-    const dd = new Date(n.getFullYear(), n.getMonth(), n.getDate() - (6 - i));
+    const dd = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + i);
     return { k: kf(dd), nom: DIAS[dd.getDay()].slice(0, 3), num: dd.getDate() };
   });
   const marcado = (h, k) => d.habito_marcas.some(m => m.habito_id === h.id && m.fecha === k);
@@ -720,6 +725,14 @@ function vHabitos() {
       <button class="primario" style="border-radius:16px;padding:0 24px" data-acc="addHabito">+</button>
     </div>
     <div class="tarjeta" style="padding:22px 24px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <div style="font-size:13px;color:var(--txt3)">${inicio.getDate()} ${MES3[inicio.getMonth()]} — ${fin.getDate()} ${MES3[fin.getMonth()]}</div>
+        <div style="display:flex;gap:8px;margin-left:auto;align-items:center">
+          ${esSemanaActual ? '' : `<button class="pill" data-acc="habitosHoy">Hoy</button>`}
+          <button class="redondo" data-acc="habitosSemana" data-i="-1">‹</button>
+          <button class="redondo" data-acc="habitosSemana" data-i="1">›</button>
+        </div>
+      </div>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
         <div style="flex:1"></div>
         <div style="flex:0 0 auto;display:flex;gap:8px">
@@ -936,6 +949,11 @@ const ACCIONES = {
     const w = new Date(estado.ui.semana + 'T00:00:00');
     estado.ui.semana = kf(new Date(w.getFullYear(), w.getMonth(), w.getDate() + (+i) * 7));
   },
+  habitosSemana: i => {
+    const w = new Date(estado.ui.habitosSemana + 'T00:00:00');
+    estado.ui.habitosSemana = kf(new Date(w.getFullYear(), w.getMonth(), w.getDate() + (+i) * 7));
+  },
+  habitosHoy: () => { estado.ui.habitosSemana = kf(lunesDe(estado.ui.ahora)); },
   salir: async () => { await db.salir(); },
   exportar: () => {
     const a = document.createElement('a');

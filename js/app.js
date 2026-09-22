@@ -742,6 +742,7 @@ function vHabitos() {
           </div>`).join('')}
         </div>
         <div style="flex:0 0 54px;text-align:right;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--txt5)">Racha</div>
+        <div style="flex:0 0 20px"></div>
       </div>
       ${d.habitos.length ? d.habitos.map(h => {
         let racha = 0;
@@ -758,7 +759,7 @@ function vHabitos() {
             ${dias.map(x => { const on = marcado(h, x.k); return `<button class="celda" data-marca="${h.id}" data-fecha="${x.k}" style="${on ? `background:${pal(h.color).bg};border-color:${pal(h.color).bar}` : ''}">${on ? '✓' : ''}</button>`; }).join('')}
           </div>
           <div style="flex:0 0 54px;text-align:right;font-size:13px;color:var(--txt2)">${racha}d</div>
-          <button class="icono" data-borrar-habito="${h.id}">×</button>
+          <button class="icono" data-borrar-habito="${h.id}" style="flex:0 0 20px;text-align:center">×</button>
         </div>`;
       }).join('') : '<div style="padding:18px 2px;font-size:13px;color:var(--txt4)">Todavía no hay hábitos. Agregá el primero arriba.</div>'}
     </div>

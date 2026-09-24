@@ -9,8 +9,7 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 export const TABLAS = [
   'notas', 'eventos', 'tareas', 'proyectos', 'proyecto_pasos', 'proyecto_notas',
   'habitos', 'habito_marcas', 'gastos_fijos', 'gastos_fijos_pagos',
-  'gastos_variables', 'ingresos', 'ahorros', 'ahorros_programados', 'ahorros_programados_pagos',
-  'dinero_mensual'
+  'gastos_variables', 'ingresos', 'ahorros'
 ];
 
 /* ---------- sesión ---------- */
@@ -121,12 +120,11 @@ export async function borrarDonde(tabla, filtro) {
 const ORDEN_IMPORT = [
   'notas', 'eventos', 'tareas', 'proyectos', 'proyecto_pasos', 'proyecto_notas',
   'habitos', 'habito_marcas', 'gastos_fijos', 'gastos_fijos_pagos',
-  'gastos_variables', 'ingresos', 'ahorros', 'ahorros_programados', 'ahorros_programados_pagos',
-  'dinero_mensual'
+  'gastos_variables', 'ingresos', 'ahorros'
 ];
 // Tablas "padre": borrarlas alcanza, porque el resto cuelga de ellas con
 // "on delete cascade" (ver esquema.sql).
-const TABLAS_PADRE = ['notas', 'eventos', 'tareas', 'proyectos', 'habitos', 'gastos_fijos', 'gastos_variables', 'ingresos', 'ahorros', 'ahorros_programados', 'dinero_mensual'];
+const TABLAS_PADRE = ['notas', 'eventos', 'tareas', 'proyectos', 'habitos', 'gastos_fijos', 'gastos_variables', 'ingresos', 'ahorros'];
 
 export async function importarTodo(datos, modo = 'agregar') {
   const { data: { user } } = await sb.auth.getUser();
@@ -165,19 +163,7 @@ export async function borrarTodoMisDatos() {
     const { error } = await sb.from(t).delete().eq('user_id', user.id);
     if (error) throw error;
   }
-}
-
-/* ---------- dinero base y meta de ahorro, por mes ---------- */
-
-export async function guardarMesDinero(mes, campos) {
-  return conReintento(async () => {
-    const { data: { user } } = await sb.auth.getUser();
-    const { data, error } = await sb.from('dinero_mensual')
-      .upsert({ user_id: user.id, mes, ...campos }, { onConflict: 'user_id,mes' })
-      .select().single();
-    if (error) throw error;
-    return data;
-  });
+  await guardarPerfil({ dinero_base: 0, meta_ahorro: 0 });
 }
 
 /* ---------- guardado con retardo (para el texto que se escribe) ---------- */

@@ -130,17 +130,34 @@ create table if not exists gastos_fijos (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users on delete cascade,
   nombre text not null,
-  monto numeric default 0,
+  monto numeric default 0,           -- solo aplica si precio_fijo = true
+  precio_fijo boolean not null default true,
+  categoria text default 'Otros',
   color smallint default 0,
   creado_en timestamptz default now()
 );
+alter table gastos_fijos add column if not exists precio_fijo boolean not null default true;
+alter table gastos_fijos add column if not exists categoria text default 'Otros';
 
 create table if not exists gastos_fijos_pagos (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users on delete cascade,
   gasto_id uuid not null references gastos_fijos on delete cascade,
   mes text not null,                 -- 'YYYY-MM'
+  monto numeric,                     -- monto real pagado, solo si el gasto es de precio variable
   unique (gasto_id, mes)
+);
+alter table gastos_fijos_pagos add column if not exists monto numeric;
+
+-- Dinero base y meta de ahorro, ahora por mes (antes eran un único valor
+-- por cuenta, así que arrastraban el mismo número a todos los meses).
+create table if not exists dinero_mensual (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  mes text not null,                 -- 'YYYY-MM'
+  dinero_base numeric default 0,
+  meta_ahorro numeric default 0,
+  unique (user_id, mes)
 );
 
 create table if not exists gastos_variables (
@@ -201,7 +218,7 @@ begin
   foreach t in array array[
     'perfiles','notas','eventos','tareas','proyectos','proyecto_pasos','proyecto_notas',
     'habitos','habito_marcas','gastos_fijos','gastos_fijos_pagos','gastos_variables',
-    'ingresos','ahorros','ahorros_programados','ahorros_programados_pagos'
+    'ingresos','ahorros','ahorros_programados','ahorros_programados_pagos','dinero_mensual'
   ] loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists "propio" on %I', t);

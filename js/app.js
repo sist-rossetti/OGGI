@@ -96,7 +96,7 @@ const estado = {
     borradores: {},
     modoAcceso: 'entrar', errorAcceso: '',
     tema: temaGuardado, panelRecordatorios: false, panelCuenta: false,
-    sinConexion: false, habitosSemana: null, dineroMes: null, fijoTipo: true, fCat: 'Otros', varFiltro: 'Todas'
+    sinConexion: false, habitosSemana: null, dineroMes: null, fCat: 'Otros', varFiltro: 'Todas'
   }
 };
 const b = (k, v) => { if (v !== undefined) estado.ui.borradores[k] = v; return estado.ui.borradores[k] ?? ''; };
@@ -798,7 +798,7 @@ function vDinero() {
   const delMes = (l, m = mes) => l.filter(x => String(x.fecha).slice(0, 7) === m);
   const suma = l => l.reduce((a, x) => a + num(x.monto), 0);
   const pagoDe = (g, m) => d.gastos_fijos_pagos.find(p => p.gasto_id === g.id && p.mes === m);
-  const montoFijoDe = (g, m) => g.precio_fijo ? num(g.monto) : num(pagoDe(g, m)?.monto);
+  const montoFijoDe = (g, m) => num(pagoDe(g, m)?.monto);
   const sFDe = m => d.gastos_fijos.reduce((a, g) => a + montoFijoDe(g, m), 0);
   const vars = delMes(d.gastos_variables), ings = delMes(d.ingresos);
   const sF = sFDe(mes), sV = suma(vars), sI = suma(ings), sA = suma(d.ahorros);
@@ -875,26 +875,19 @@ function vDinero() {
               <button class="check${popId === g.id ? ' pop' : ''}" data-pago="${g.id}" style="width:20px;height:20px;font-size:10px;${pg ? `border-color:${pal(g.color).bar};background:${pal(g.color).bar}` : 'border-color:rgba(0,0,0,.12);background:transparent'}">${pg ? '✓' : ''}</button>
               <div style="flex:1;min-width:0">
                 <div style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${pg ? 'color:#8A8A90' : ''}">${esc(g.nombre)}</div>
-                <div style="font-size:11px;color:var(--txt2);margin-top:2px">${esc(g.categoria || 'Otros')} · ${pg ? 'Pagado este mes' : g.precio_fijo ? 'Pendiente' : 'Monto variable'}</div>
+                <div style="font-size:11px;color:var(--txt2);margin-top:2px">${esc(g.categoria || 'Otros')} · ${pg ? 'Pagado este mes' : 'Pendiente'}</div>
               </div>
-              ${g.precio_fijo
-                ? `<div style="font-size:14px;font-weight:500">${money(num(g.monto))}</div>`
-                : pg
-                  ? `<div style="font-size:14px;font-weight:500">${money(num(pago?.monto))}</div>`
-                  : `<input class="campo" style="flex:0 0 84px;background:#FFF" data-f="gfM${g.id}" data-b="gfM${g.id}" placeholder="$" value="${esc(b('gfM' + g.id))}">`}
+              ${pg
+                ? `<div style="font-size:14px;font-weight:500">${money(num(pago?.monto))}</div>`
+                : `<input class="campo" style="flex:0 0 84px;background:#FFF" data-f="gfM${g.id}" data-b="gfM${g.id}" placeholder="$" value="${esc(b('gfM' + g.id))}">`}
               <button class="icono" data-borrar-fijo="${g.id}">×</button>
-            </div>`; }).join('') : '<div style="padding:14px 2px;font-size:13px;color:var(--txt4)">Alquiler, luz, internet… lo que se repite todos los meses.</div>'}
-        </div>
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <button data-acc="fijoTipo" data-i="1" style="cursor:pointer;border:1px solid ${u.fijoTipo ? '#3B3B3F' : 'var(--borde)'};background:${u.fijoTipo ? '#3B3B3F' : '#FFF'};color:${u.fijoTipo ? '#FFF' : '#5A5A60'};border-radius:999px;padding:6px 12px;font-size:11px">Precio fijo</button>
-          <button data-acc="fijoTipo" data-i="0" style="cursor:pointer;border:1px solid ${!u.fijoTipo ? '#3B3B3F' : 'var(--borde)'};background:${!u.fijoTipo ? '#3B3B3F' : '#FFF'};color:${!u.fijoTipo ? '#FFF' : '#5A5A60'};border-radius:999px;padding:6px 12px;font-size:11px">Monto variable</button>
+            </div>`; }).join('') : '<div style="padding:14px 2px;font-size:13px;color:var(--txt4)">Alquiler, luz, internet… lo que se repite todos los meses (el monto se carga cada mes).</div>'}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
           ${CATS.map((c, i) => `<button data-acc="fCat" data-i="${c}" style="cursor:pointer;border:1px solid ${(u.fCat || 'Otros') === c ? pal(i).bar : 'var(--borde)'};background:${(u.fCat || 'Otros') === c ? pal(i).bg : '#FFF'};border-radius:999px;padding:6px 12px;font-size:11px;color:#5A5A60">${c}</button>`).join('')}
         </div>
         <div style="display:flex;gap:8px">
-          <input class="campo" data-f="fN" data-b="fN" data-enter="addFijo" placeholder="Concepto" value="${esc(b('fN'))}">
-          ${u.fijoTipo ? `<input class="campo" style="flex:0 0 94px" data-f="fM" data-b="fM" data-enter="addFijo" placeholder="$" value="${esc(b('fM'))}">` : ''}
+          <input class="campo" data-f="fN" data-b="fN" data-enter="addFijo" placeholder="Concepto (ej. Alquiler)" value="${esc(b('fN'))}">
           <button class="primario" style="padding:0 18px" data-acc="addFijo">+</button>
         </div>
       </div>
@@ -1157,13 +1150,11 @@ const ACCIONES = {
     D().habitos.push(h); limpiar('hab');
   }),
 
-  fijoTipo: i => { estado.ui.fijoTipo = i === '1'; },
   fCat: i => { estado.ui.fCat = i; },
   addFijo: () => seguro(async () => {
     const n = b('fN').trim(); if (!n) return;
-    const fijo = estado.ui.fijoTipo;
-    const g = await db.crear('gastos_fijos', { nombre: n, monto: fijo ? num(b('fM')) : 0, precio_fijo: fijo, categoria: estado.ui.fCat, color: D().gastos_fijos.length % 6 });
-    D().gastos_fijos.push(g); limpiar('fN', 'fM');
+    const g = await db.crear('gastos_fijos', { nombre: n, monto: 0, precio_fijo: false, categoria: estado.ui.fCat, color: D().gastos_fijos.length % 6 });
+    D().gastos_fijos.push(g); limpiar('fN');
   }),
   addVar: () => seguro(async () => {
     const n = b('vN').trim(); if (!n) return;
@@ -1224,11 +1215,8 @@ document.addEventListener('click', async ev => {
     const p = D().gastos_fijos_pagos.find(x => x.gasto_id === s.pago && x.mes === mes);
     if (p) { D().gastos_fijos_pagos = D().gastos_fijos_pagos.filter(x => x !== p); render(); return seguro(() => db.borrar('gastos_fijos_pagos', p.id)); }
     const g = D().gastos_fijos.find(x => x.id === s.pago);
-    let montoPago = null;
-    if (!g.precio_fijo) {
-      montoPago = num(b('gfM' + g.id));
-      if (!montoPago) { aviso('Ingresá cuánto pagaste antes de marcarlo.'); return; }
-    }
+    const montoPago = num(b('gfM' + g.id));
+    if (!montoPago) { aviso('Ingresá cuánto pagaste antes de marcarlo.'); return; }
     pop(s.pago); render();
     return seguro(async () => {
       D().gastos_fijos_pagos.push(await db.crear('gastos_fijos_pagos', { gasto_id: s.pago, mes, monto: montoPago }));

@@ -112,6 +112,13 @@ Para ver los datos con tus propios ojos: Supabase → **Table Editor**.
 - **Borrar la cuenta**: botón "Eliminar mi cuenta" en el menú ⚙. Necesita el Paso 4 de más arriba para funcionar.
 - **Aviso de sin conexión**: si una escritura falla por falta de red, aparece un ícono 📡 en la cabecera y el cambio se reintenta solo apenas vuelve la conexión (sin recargar la página).
 
+- **Dinero por mes**: flechas ‹ › para moverse entre meses. Cada mes tiene su propio dinero base, meta de ahorro, gastos fijos, gastos variables, ingresos y ahorros; los meses anteriores quedan como estaban. Un mes nuevo arranca vacío (con un botón opcional para copiar los gastos fijos del mes anterior).
+- **Hábitos por mes**: además de la semana, una vista "Mes" con todos los días y cuántos cumpliste.
+- **Notas de texto**: pestaña "Notas", como la app de notas del celular. La primera línea es el título, se guarda sola mientras escribís y el buscador de arriba también busca adentro. (Son distintas de las notas adhesivas del Inicio.)
+- **Editar lo ya guardado**: un clic sobre el nombre (o el monto) de una tarea, proyecto, paso, hábito, evento o gasto lo vuelve editable. Enter guarda, Escape cancela.
+
+> **Si ya tenías OGGI andando antes de esto:** volvé a correr el `esquema.sql` completo en Supabase (SQL Editor → Run). Es seguro correrlo de nuevo: no borra nada. Crea las tablas del dinero por mes y de las notas de texto, pasa tu dinero base y tu meta a septiembre 2026, y deja cada gasto fijo en el mes en que lo creaste.
+
 ## Lo que todavía no está
 
 Nada crítico por ahora. Ideas para más adelante: recordatorios por notificación del sistema (hoy la campana solo muestra la lista dentro de la app), y exportar/backup automático programado.

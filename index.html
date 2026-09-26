@@ -6,7 +6,7 @@
 <title>OGGI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Caveat:wght@400;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Caveat:wght@400;600&family=Space+Mono:wght@400;700&family=Playfair+Display:wght@400;600&family=Patrick+Hand&family=Nunito:wght@400;600&family=Indie+Flower&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#FCFCFC; --card:#FFFFFF; --sutil:#FCFCFD; --tablero:#FBFAF8;
@@ -17,6 +17,7 @@
   --enlace:#7FA6D8; --enlace-h:#5F87BC; --foco:#E4EDF7; --placeholder:#BFBFC4;
   --scroll:#E8E8EA; --overlay:rgba(255,255,255,.6); --overlay2:rgba(255,255,255,.8);
   --sombra:rgba(60,60,70,.12); --blob1:#EAF1FA; --blob2:#F7EFE6;
+  --txt-pill:#5A5A60;
   color-scheme: light;
 }
 :root[data-tema="noche"]{
@@ -28,6 +29,7 @@
   --enlace:#8FB6E6; --enlace-h:#AEC9EE; --foco:#2C3B4C; --placeholder:#5A5A60;
   --scroll:#333338; --overlay:rgba(255,255,255,.08); --overlay2:rgba(255,255,255,.12);
   --sombra:rgba(0,0,0,.35); --blob1:#1F2A36; --blob2:#2A241E;
+  --txt-pill:#AAAAB1;
   color-scheme: dark;
 }
 *{box-sizing:border-box}
@@ -42,10 +44,11 @@ textarea{resize:none}
 ::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:8px}
 @keyframes softpulse{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes gira{to{transform:rotate(360deg)}}
-@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.3)}100%{transform:scale(1)}}
-.pop{animation:pop .32s cubic-bezier(.34,1.56,.64,1)}
 
 .oculto{display:none !important}
+/* Fondos pastel: siempre claros, así que el texto usa los grises del modo día
+   también en modo noche (si no, queda texto claro sobre fondo claro). */
+.pastel{--txt:#3B3B3F;--txt2:#7C7C82;--txt3:#9A9AA0;--txt4:#A5A5AB;--txt5:#B0B0B6;color:var(--txt);color-scheme:light}
 .tarjeta{background:var(--card);border:1px solid var(--borde);border-radius:24px}
 .rotulo{font-size:12px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--txt2)}
 .mini{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--txt4)}
@@ -103,6 +106,8 @@ main{max-width:1320px;width:100%;margin:0 auto;padding:26px 22px 60px}
 .nota .lienzo{position:absolute;inset:0;border-radius:3px;cursor:crosshair}
 .nota .pie{position:absolute;left:10px;right:8px;bottom:6px;display:flex;align-items:center;gap:3px}
 .nota .pie .sw{width:9px;height:9px;padding:0;border-radius:50%;border:1px solid rgba(0,0,0,.10);cursor:pointer;flex:0 0 auto}
+.nota .paleta{position:absolute;left:8px;right:8px;bottom:26px;display:flex;flex-wrap:wrap;gap:5px;padding:7px;border-radius:8px;background:rgba(255,255,255,.85);box-shadow:0 4px 10px rgba(60,60,70,.12);z-index:2}
+.nota .paleta .sw{width:16px;height:16px;padding:0;border-radius:50%;border:1px solid rgba(0,0,0,.10);cursor:pointer}
 
 /* calendario */
 .grid7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}

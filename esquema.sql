@@ -171,6 +171,49 @@ create table if not exists ahorros (
 create index if not exists ahorros_user_fecha on ahorros (user_id, fecha desc);
 
 -- ---------------------------------------------------------------
+-- Dinero por mes: cada mes tiene su propio dinero base, meta de ahorro
+-- y lista de gastos fijos. Los meses anteriores quedan como estaban.
+-- ---------------------------------------------------------------
+create table if not exists dinero_mensual (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  mes text not null,                 -- 'YYYY-MM'
+  dinero_base numeric default 0,
+  meta_ahorro numeric default 0,
+  unique (user_id, mes)
+);
+
+-- El dinero base y la meta que ya estaban cargados pasan a septiembre 2026
+-- (el mes en que se usaron). Si ya existe la fila, no se toca.
+insert into dinero_mensual (user_id, mes, dinero_base, meta_ahorro)
+select id, '2026-09', coalesce(dinero_base, 0), coalesce(meta_ahorro, 0)
+from perfiles
+where coalesce(dinero_base, 0) <> 0 or coalesce(meta_ahorro, 0) <> 0
+on conflict (user_id, mes) do nothing;
+
+-- Cada gasto fijo pertenece a un mes. Los que ya existían quedan en el mes
+-- en que se crearon (hora de Argentina), así septiembre conserva los suyos.
+alter table gastos_fijos add column if not exists mes text;
+update gastos_fijos
+set mes = to_char(creado_en at time zone 'America/Argentina/Buenos_Aires', 'YYYY-MM')
+where mes is null;
+create index if not exists fijos_user_mes on gastos_fijos (user_id, mes);
+
+-- ---------------------------------------------------------------
+-- Notas de texto (pestaña "Notas"): texto libre y largo, como la app de
+-- notas del celular. La primera línea hace de título. Son distintas de
+-- las notas adhesivas del Inicio (tabla "notas").
+-- ---------------------------------------------------------------
+create table if not exists apuntes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  texto text default '',
+  creado_en timestamptz default now(),
+  actualizado_en timestamptz default now()
+);
+create index if not exists apuntes_user on apuntes (user_id, actualizado_en desc);
+
+-- ---------------------------------------------------------------
 -- Seguridad: cada persona solo ve y toca SUS filas.
 -- Esta parte es la que hace que OGGI sea multicliente de verdad.
 -- ---------------------------------------------------------------
@@ -180,7 +223,7 @@ begin
   foreach t in array array[
     'perfiles','notas','eventos','tareas','proyectos','proyecto_pasos','proyecto_notas',
     'habitos','habito_marcas','gastos_fijos','gastos_fijos_pagos','gastos_variables',
-    'ingresos','ahorros'
+    'ingresos','ahorros','dinero_mensual','apuntes'
   ] loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists "propio" on %I', t);

@@ -9,8 +9,11 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 export const TABLAS = [
   'notas', 'eventos', 'tareas', 'proyectos', 'proyecto_pasos', 'proyecto_notas',
   'habitos', 'habito_marcas', 'gastos_fijos', 'gastos_fijos_pagos',
-  'gastos_variables', 'ingresos', 'ahorros'
+  'gastos_variables', 'ingresos', 'ahorros', 'dinero_mensual', 'apuntes'
 ];
+// Tablas agregadas después: si todavía no se corrió el esquema.sql nuevo,
+// la app abre igual y avisa, en vez de no cargar nada.
+const TABLAS_NUEVAS = ['dinero_mensual', 'apuntes'];
 
 /* ---------- sesión ---------- */
 
@@ -43,6 +46,12 @@ export async function recuperar(email) {
   if (error) throw error;
 }
 
+// Se usa después de entrar con el enlace de "Olvidé mi contraseña".
+export async function cambiarPassword(password) {
+  const { error } = await sb.auth.updateUser({ password });
+  if (error) throw error;
+}
+
 /* ---------- perfil ---------- */
 
 export async function leerPerfil() {
@@ -59,6 +68,20 @@ export async function guardarPerfil(campos) {
   });
 }
 
+/* ---------- dinero base y meta de cada mes ---------- */
+
+// Crea la fila del mes si no existe, o actualiza solo los campos pasados.
+export async function guardarMensual(mes, campos) {
+  return conReintento(async () => {
+    const { data: { user } } = await sb.auth.getUser();
+    const { data, error } = await sb.from('dinero_mensual')
+      .upsert({ user_id: user.id, mes, ...campos }, { onConflict: 'user_id,mes' })
+      .select().single();
+    if (error) throw error;
+    return data;
+  });
+}
+
 /* ---------- cuenta ---------- */
 
 // Borra la cuenta entera (correo, contraseña y todos los datos, vía
@@ -72,11 +95,28 @@ export async function borrarCuenta() {
 
 /* ---------- CRUD genérico ---------- */
 
+// Orden estable al leer. Sin esto Postgres devuelve las filas en cualquier
+// orden, y por ejemplo una tarea recién tildada aparece en otro lugar al
+// recargar. Coincide con cómo app.js agrega las filas nuevas (push/unshift).
+// (notas.actualizado_en nunca se modifica, así que equivale a la fecha de creación.)
+const ORDEN = {
+  notas: ['actualizado_en', true], eventos: ['fecha', true], tareas: ['creado_en', false],
+  proyectos: ['creado_en', true], proyecto_pasos: ['orden', true], proyecto_notas: ['creado_en', true],
+  habitos: ['creado_en', true], gastos_fijos: ['creado_en', true],
+  gastos_variables: ['fecha', false], ingresos: ['fecha', false], ahorros: ['fecha', false],
+  dinero_mensual: ['mes', true], apuntes: ['actualizado_en', false]
+};
+
 export async function traerTodo() {
   const out = {};
   await Promise.all(TABLAS.map(async t => {
-    const { data, error } = await sb.from(t).select('*');
-    if (error) throw error;
+    let q = sb.from(t).select('*');
+    if (ORDEN[t]) q = q.order(ORDEN[t][0], { ascending: ORDEN[t][1] }).order('id');
+    const { data, error } = await q;
+    if (error) {
+      if (TABLAS_NUEVAS.includes(t)) { (out.faltan ||= []).push(t); out[t] = []; return; }
+      throw error;
+    }
     out[t] = data || [];
   }));
   out.perfil = await leerPerfil();
@@ -120,11 +160,11 @@ export async function borrarDonde(tabla, filtro) {
 const ORDEN_IMPORT = [
   'notas', 'eventos', 'tareas', 'proyectos', 'proyecto_pasos', 'proyecto_notas',
   'habitos', 'habito_marcas', 'gastos_fijos', 'gastos_fijos_pagos',
-  'gastos_variables', 'ingresos', 'ahorros'
+  'gastos_variables', 'ingresos', 'ahorros', 'dinero_mensual', 'apuntes'
 ];
 // Tablas "padre": borrarlas alcanza, porque el resto cuelga de ellas con
 // "on delete cascade" (ver esquema.sql).
-const TABLAS_PADRE = ['notas', 'eventos', 'tareas', 'proyectos', 'habitos', 'gastos_fijos', 'gastos_variables', 'ingresos', 'ahorros'];
+const TABLAS_PADRE = ['notas', 'eventos', 'tareas', 'proyectos', 'habitos', 'gastos_fijos', 'gastos_variables', 'ingresos', 'ahorros', 'dinero_mensual', 'apuntes'];
 
 export async function importarTodo(datos, modo = 'agregar') {
   const { data: { user } } = await sb.auth.getUser();
@@ -144,7 +184,10 @@ export async function importarTodo(datos, modo = 'agregar') {
     // (por ejemplo proyecto_pasos.proyecto_id), y se fuerza el user_id
     // a la cuenta actual para que las reglas de seguridad lo acepten.
     const limpio = filas.map(f => ({ ...f, user_id: user.id }));
-    const { error } = await sb.from(t).upsert(limpio, { onConflict: 'id' });
+    // dinero_mensual es único por mes: si ese mes ya existe, se actualiza.
+    const { error } = t === 'dinero_mensual'
+      ? await sb.from(t).upsert(limpio.map(({ id, ...f }) => f), { onConflict: 'user_id,mes' })
+      : await sb.from(t).upsert(limpio, { onConflict: 'id' });
     if (error) throw error;
   }
 

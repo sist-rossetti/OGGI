@@ -15,10 +15,26 @@ const PAL = [
   { n: 'Lila',     bg: '#E6DFF6', bar: '#C3B4E6' },
   { n: 'Durazno',  bg: '#FBE2CE', bar: '#F0C39B' }
 ];
+// Las notas usan una paleta más amplia: los 6 primeros son los mismos de PAL
+// (así las notas ya guardadas no cambian de color) y después vienen los extra.
+const PAL_NOTAS = [...PAL,
+  { n: 'Menta',    bg: '#D4F0EA', bar: '#A6DDD0' },
+  { n: 'Coral',    bg: '#FBD5CF', bar: '#F2AFA4' },
+  { n: 'Lavanda',  bg: '#DDE3F8', bar: '#B7C3EE' },
+  { n: 'Lima',     bg: '#EAF3CF', bar: '#CFE29A' },
+  { n: 'Arena',    bg: '#F1EAD9', bar: '#DDCFAF' },
+  { n: 'Perla',    bg: '#ECECEF', bar: '#CFCFD6' }
+];
+// Tipografías de las notas. El orden importa: la nota guarda la posición.
+// Los nombres van entre comillas simples porque se insertan dentro de style="…".
 const FUENTES = [
-  { f: 'Montserrat, sans-serif', s: '14px' },
-  { f: 'Caveat, cursive',        s: '21px' },
-  { f: '"Space Mono", monospace', s: '13px' }
+  { n: 'Montserrat',       f: 'Montserrat, sans-serif',        s: '14px' },
+  { n: 'Caveat',           f: 'Caveat, cursive',               s: '21px' },
+  { n: 'Space Mono',       f: "'Space Mono', monospace",       s: '13px' },
+  { n: 'Playfair Display', f: "'Playfair Display', serif",     s: '15px' },
+  { n: 'Patrick Hand',     f: "'Patrick Hand', cursive",       s: '18px' },
+  { n: 'Nunito',           f: 'Nunito, sans-serif',            s: '14px' },
+  { n: 'Indie Flower',     f: "'Indie Flower', cursive",       s: '18px' }
 ];
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MES3  = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -34,11 +50,34 @@ const pad = n => String(n).padStart(2, '0');
 const kf = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 const lunesDe = d => { const diff = (d.getDay() + 6) % 7; return new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff); };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-const num = v => { const n = parseFloat(String(v).replace(/[^\d.,-]/g, '').replace(',', '.')); return isNaN(n) ? 0 : n; };
+// Montos en formato es-AR: el punto separa miles y la coma es decimal
+// ("1.600.000" → 1600000, "1.500,50" → 1500.5). Lo que ya viene como número
+// desde la base se usa tal cual, sin volver a interpretarlo.
+const num = v => {
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  let s = String(v ?? '').replace(/[^\d.,-]/g, '');
+  const puntos = (s.match(/\./g) || []).length, comas = (s.match(/,/g) || []).length;
+  if (comas > 1) s = s.replace(/,/g, '');
+  else if (comas === 1) s = s.replace(/\./g, '').replace(',', '.');
+  else if (puntos > 1 || /\.\d{3}$/.test(s)) s = s.replace(/\./g, '');
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+};
 const money = n => '$' + Math.round(n).toLocaleString('es-AR');
 const pal = i => PAL[((i | 0) % 6 + 6) % 6];
+const palNota = i => PAL_NOTAS[((i | 0) % PAL_NOTAS.length + PAL_NOTAS.length) % PAL_NOTAS.length];
+const fuenteNota = i => FUENTES[((i | 0) % FUENTES.length + FUENTES.length) % FUENTES.length];
 const fechaCorta = f => f ? (+String(f).slice(8) + ' ' + MES3[+String(f).slice(5,7) - 1]) : '';
 const $ = s => document.querySelector(s);
+const mesTexto = ym => MESES[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4);
+const correrMes = (ym, n) => { const d = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1); return d.getFullYear() + '-' + pad(d.getMonth() + 1); };
+// Los gastos fijos creados antes de separar por mes no tienen "mes": cuentan
+// en el mes (hora local) en que se crearon, igual que en esquema.sql.
+const mesFijo = g => {
+  if (g.mes) return g.mes;
+  const d = new Date(g.creado_en);
+  return isNaN(d) ? '' : d.getFullYear() + '-' + pad(d.getMonth() + 1);
+};
 
 /* ---------- modo noche ---------- */
 function aplicarTema(t) {
@@ -81,22 +120,63 @@ const estado = {
     borradores: {},
     modoAcceso: 'entrar', errorAcceso: '',
     tema: temaGuardado, panelRecordatorios: false, panelCuenta: false,
-    sinConexion: false, habitosSemana: null
+    sinConexion: false, habitosSemana: null,
+    modoHab: 'semana', paletaNota: null, apunte: null, habitosMes: null, mesDinero: null, editando: null
   }
 };
 const b = (k, v) => { if (v !== undefined) estado.ui.borradores[k] = v; return estado.ui.borradores[k] ?? ''; };
 const limpiar = (...ks) => ks.forEach(k => { estado.ui.borradores[k] = ''; });
 const D = () => estado.datos;
+const mesActual = () => kf(estado.ui.ahora).slice(0, 7);
+const mesDinero = () => estado.ui.mesDinero || mesActual();
+// Fecha que se guarda al cargar algo mientras se mira otro mes.
+const fechaParaMes = ym => ym === mesActual() ? kf(estado.ui.ahora) : ym + '-01';
+
+/* ---------- edición en el lugar ----------
+   Un clic sobre un texto ya guardado lo convierte en campo: Enter o salir
+   del campo guarda, Escape cancela. */
+function editable(tabla, id, campo, valor) {
+  const e = estado.ui.editando, esMonto = campo === 'monto';
+  if (e && e.tabla === tabla && e.id === id && e.campo === campo) {
+    const v = esMonto ? (num(valor) ? num(valor).toLocaleString('es-AR') : '') : valor;
+    return `<input class="campo" data-f="edit" data-edicion value="${esc(v)}" style="padding:4px 8px;font-size:inherit;border-radius:8px;${esMonto ? 'width:120px;text-align:right' : ''}">`;
+  }
+  return `<span data-editar="${tabla}|${id}|${campo}" title="Clic para editar" style="cursor:text">${esMonto ? money(num(valor)) : esc(valor)}</span>`;
+}
+function guardarEdicion(input, diferir = false) {
+  const e = estado.ui.editando;
+  if (!e) return;
+  estado.ui.editando = null;
+  const fila = D()[e.tabla].find(x => x.id === e.id);
+  const valor = e.campo === 'monto' ? num(input.value) : input.value.trim();
+  const cambio = fila && valor !== '' && valor !== fila[e.campo];
+  if (cambio) fila[e.campo] = valor;
+  if (!diferir) render();
+  else {
+    // El foco se fue con un clic: se cambia solo el campo, sin redibujar todo,
+    // para que ese clic llegue a su botón. El resto se redibuja al soltar.
+    if (fila) input.outerHTML = editable(e.tabla, e.id, e.campo, fila[e.campo]);
+    addEventListener('mouseup', () => setTimeout(render), { once: true });
+  }
+  if (cambio) seguro(() => db.actualizar(e.tabla, e.id, { [e.campo]: valor }));
+}
+let mouseApretado = false;
+addEventListener('mousedown', () => { mouseApretado = true; }, true);
+addEventListener('mouseup', () => { mouseApretado = false; }, true);
 
 /* ------------------------------------------------------------------ */
 /* arranque                                                            */
 /* ------------------------------------------------------------------ */
 (async function inicio() {
-  const s = await db.sesion();
-  if (s) await cargar(); else mostrarAcceso();
+  // Se escucha antes de leer la sesión para no perderse el aviso que llega
+  // al abrir el enlace de "Olvidé mi contraseña" desde el correo.
+  if (/type=recovery/.test(location.hash)) estado.ui.modoAcceso = 'nueva';
   db.sb.auth.onAuthStateChange((ev) => {
     if (ev === 'SIGNED_OUT') { estado.datos = null; mostrarAcceso(); }
+    if (ev === 'PASSWORD_RECOVERY') { estado.ui.modoAcceso = 'nueva'; estado.datos = null; mostrarAcceso(); }
   });
+  const s = await db.sesion();
+  if (s && estado.ui.modoAcceso !== 'nueva') await cargar(); else mostrarAcceso();
   setInterval(() => {
     estado.ui.ahora = new Date();
     if (estado.datos && estado.ui.pestana === 'inicio') pintarReloj();
@@ -130,6 +210,7 @@ function mostrarAcceso() {
   const el = $('#acceso');
   el.classList.remove('oculto');
   const crear = estado.ui.modoAcceso === 'crear';
+  if (estado.ui.modoAcceso === 'nueva') return mostrarNuevaPassword(el);
   el.innerHTML = `
     <div class="blob1"></div><div class="blob2"></div>
     <div class="caja">
@@ -186,11 +267,43 @@ function mostrarAcceso() {
     }
   };
 }
+// Pantalla a la que se llega desde el enlace de recuperación del correo:
+// la sesión ya está abierta, solo falta elegir la contraseña nueva.
+function mostrarNuevaPassword(el) {
+  el.innerHTML = `
+    <div class="blob1"></div><div class="blob2"></div>
+    <div class="caja">
+      <div class="marca" style="margin-bottom:26px"><i></i><span>OGGI</span></div>
+      <div style="font-size:15px;font-weight:500;margin-bottom:22px">Elegí una contraseña nueva</div>
+      <form id="fNueva" style="display:flex;flex-direction:column;gap:10px">
+        <input class="campo" name="password" type="password" placeholder="Contraseña nueva" autocomplete="new-password" required minlength="6">
+        ${estado.ui.errorAcceso ? `<div style="font-size:12px;color:var(--peligro);padding:0 2px">${esc(estado.ui.errorAcceso)}</div>` : ''}
+        <button class="primario" style="padding:14px;margin-top:4px" type="submit">Guardar y entrar</button>
+      </form>
+    </div>`;
+  $('#fNueva').onsubmit = async ev => {
+    ev.preventDefault();
+    $('#cargando').classList.remove('oculto');
+    try {
+      await db.cambiarPassword(ev.target.password.value);
+      estado.ui.modoAcceso = 'entrar';
+      estado.ui.errorAcceso = '';
+      history.replaceState(null, '', location.pathname + location.search);
+      await cargar();
+      aviso('Tu contraseña fue actualizada.');
+    } catch (e) {
+      $('#cargando').classList.add('oculto');
+      estado.ui.errorAcceso = traducir(e.message);
+      mostrarAcceso();
+    }
+  };
+}
 function traducir(m = '') {
   if (/invalid login/i.test(m)) return 'Correo o contraseña incorrectos.';
   if (/already registered/i.test(m)) return 'Ese correo ya tiene cuenta.';
   if (/at least 6/i.test(m)) return 'La contraseña necesita al menos 6 caracteres.';
   if (/rate limit/i.test(m)) return 'Demasiados intentos. Probá en un minuto.';
+  if (/different from the old/i.test(m)) return 'La contraseña nueva tiene que ser distinta de la anterior.';
   return m || 'Algo salió mal.';
 }
 
@@ -199,15 +312,16 @@ function traducir(m = '') {
 /* ------------------------------------------------------------------ */
 const PESTANAS = [
   ['inicio','Inicio'], ['calendario','Calendario'], ['tareas','Tareas'],
-  ['proyectos','Proyectos'], ['habitos','Hábitos'], ['dinero','Dinero']
+  ['proyectos','Proyectos'], ['habitos','Hábitos'], ['dinero','Dinero'], ['apuntes','Notas']
 ];
 
 function render() {
   if (!estado.datos) return;
   const foco = document.activeElement?.dataset?.f;
   const pos = document.activeElement?.selectionStart;
+  const scroll = document.activeElement?.scrollTop;
   const u = estado.ui;
-  const vistas = { inicio: vInicio, calendario: vCalendario, tareas: vTareas, proyectos: vProyectos, habitos: vHabitos, dinero: vDinero };
+  const vistas = { inicio: vInicio, calendario: vCalendario, tareas: vTareas, proyectos: vProyectos, habitos: vHabitos, dinero: vDinero, apuntes: vApuntes };
   const recs = recordatorios();
 
   $('#app').innerHTML = `
@@ -235,7 +349,7 @@ function render() {
 
   if (foco) {
     const el = $(`[data-f="${foco}"]`);
-    if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} }
+    if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} if (scroll) el.scrollTop = scroll; }
   }
   if (u.pestana === 'inicio') { colocarNotas(); pintarReloj(); }
 }
@@ -285,7 +399,7 @@ function panelCuentaHTML() {
 function buscar() {
   const q = estado.ui.q.trim().toLowerCase();
   const d = D(), hit = s => (s || '').toLowerCase().includes(q), r = [];
-  d.notas.filter(n => hit(n.texto)).forEach(n => r.push([n.texto.slice(0, 60) || 'Nota vacía', 'Nota', pal(n.color).bar, { pestana: 'inicio' }]));
+  d.notas.filter(n => hit(n.texto)).forEach(n => r.push([n.texto.slice(0, 60) || 'Nota vacía', 'Nota', palNota(n.color).bar, { pestana: 'inicio' }]));
   d.eventos.filter(e => hit(e.titulo)).forEach(e => r.push([e.titulo, 'Evento · ' + fechaCorta(e.fecha), pal(e.color).bar, { pestana: 'calendario', selDia: e.fecha }]));
   d.tareas.filter(t => hit(t.texto)).forEach(t => r.push([t.texto, 'Tarea · ' + t.etiqueta, '#B4DCBC', { pestana: 'tareas' }]));
   d.proyectos.forEach(p => {
@@ -296,6 +410,7 @@ function buscar() {
   d.habitos.filter(h => hit(h.nombre)).forEach(h => r.push([h.nombre, 'Hábito', pal(h.color).bar, { pestana: 'habitos' }]));
   d.gastos_fijos.filter(g => hit(g.nombre)).forEach(g => r.push([g.nombre, 'Gasto fijo', pal(g.color).bar, { pestana: 'dinero' }]));
   d.gastos_variables.filter(g => hit(g.nombre)).forEach(g => r.push([g.nombre, 'Gasto · ' + g.categoria, '#EFBCC4', { pestana: 'dinero' }]));
+  d.apuntes.filter(a => hit(a.texto)).forEach(a => r.push([tituloApunte(a), 'Nota de texto', '#C3B4E6', { pestana: 'apuntes', apunte: a.id }]));
   d.ingresos.filter(i => hit(i.origen) || hit(i.detalle)).forEach(i => r.push([i.origen, 'Ingreso', '#B4DCBC', { pestana: 'dinero' }]));
 
   return `<div id="resultados">${r.length ? r.map(([t, m, c, ir]) => `
@@ -343,7 +458,7 @@ function vInicio() {
           ${prox.length ? prox.map(e => {
             const dd = new Date(e.fecha + 'T00:00:00');
             const ya = e.fecha === hoy && (e.hora == null || e.hora >= estado.ui.ahora.getHours());
-            return `<div style="display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:16px;background:${pal(e.color).bg}">
+            return `<div class="pastel" style="display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:16px;background:${pal(e.color).bg}">
               <div style="flex:0 0 54px;text-align:center">
                 <div style="font-size:19px;font-weight:600;line-height:1">${dd.getDate()}</div>
                 <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--txt2);margin-top:3px">${MES3[dd.getMonth()]}</div>
@@ -373,11 +488,11 @@ function vInicio() {
     <section class="der">
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px">
         <div class="rotulo" style="margin-right:auto">Notas</div>
-        <div style="display:flex;gap:7px">
-          ${PAL.map((p, i) => `<button data-acc="notaColor" data-i="${i}" title="${p.n}" style="width:22px;height:22px;border-radius:50%;cursor:pointer;background:${p.bg};border:2px solid ${estado.ui.notaColor === i ? '#8A8A90' : 'transparent'}"></button>`).join('')}
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          ${PAL_NOTAS.map((p, i) => `<button data-acc="notaColor" data-i="${i}" title="${p.n}" style="width:22px;height:22px;border-radius:50%;cursor:pointer;background:${p.bg};border:2px solid ${estado.ui.notaColor === i ? '#8A8A90' : 'transparent'}"></button>`).join('')}
         </div>
-        <div style="display:flex;gap:6px">
-          ${FUENTES.map((f, i) => `<button data-acc="notaFuente" data-i="${i}" style="cursor:pointer;border:1px solid ${estado.ui.notaFuente === i ? '#D6D6DA' : 'var(--borde)'};background:${estado.ui.notaFuente === i ? '#F2F2F4' : '#FFF'};border-radius:999px;padding:6px 14px;font-size:13px;font-family:${f.f}">Aa</button>`).join('')}
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${FUENTES.map((f, i) => `<button data-acc="notaFuente" data-i="${i}" title="${f.n}" style="cursor:pointer;border:1px solid ${estado.ui.notaFuente === i ? '#D6D6DA' : 'var(--borde)'};background:${estado.ui.notaFuente === i ? 'var(--borde-suave)' : 'var(--card)'};border-radius:999px;padding:6px 14px;font-size:13px;font-family:${f.f}">Aa</button>`).join('')}
         </div>
         <button class="pill" data-acc="alinear">Alinear</button>
         <button class="primario" style="border-radius:999px;padding:10px 20px;font-size:13px" data-acc="nuevaNota">+ Nueva nota</button>
@@ -396,18 +511,20 @@ function pintarReloj() {
 }
 
 function nota(n) {
-  const f = FUENTES[(n.fuente | 0) % 3];
+  const f = fuenteNota(n.fuente);
+  const paleta = estado.ui.paletaNota === n.id;
   const dibujando = estado.ui.dibujo === n.id;
-  return `<div class="nota" data-nota="${n.id}" style="background:${pal(n.color).bg};z-index:${n.z || 1}">
+  return `<div class="nota pastel" data-nota="${n.id}" style="background:${palNota(n.color).bg};z-index:${n.z || 1}">
     <div class="asa" data-arrastrar="${n.id}"><i></i></div>
     <textarea data-f="nota-${n.id}" data-texto="${n.id}" placeholder="Escribí acá…" style="font-family:${f.f};font-size:${f.s}">${esc(n.texto)}</textarea>
-    <svg viewBox="0 0 ${NW} ${NW}">${(n.trazos || []).map(t => `<polyline points="${t.pts}" fill="none" stroke="${t.color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></polyline>`).join('')}</svg>
+    <svg viewBox="0 0 ${NW} ${NW}">${(n.trazos || []).map(t => `<polyline points="${esc(t.pts)}" fill="none" stroke="${esc(t.color)}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></polyline>`).join('')}</svg>
     ${dibujando ? `<div class="lienzo" data-dibujar="${n.id}"></div>` : ''}
+    ${paleta ? `<div class="paleta">${PAL_NOTAS.map((p, i) => `<button class="sw" data-notacolor="${n.id}" data-i="${i}" title="${p.n}" style="background:${p.bg};${(n.color | 0) === i ? 'border-color:#8A8A90' : ''}"></button>`).join('')}</div>` : ''}
     <div class="pie">
-      ${PAL.map((p, i) => `<button class="sw" data-notacolor="${n.id}" data-i="${i}" style="background:${p.bg}"></button>`).join('')}
+      <button class="sw" data-paleta="${n.id}" title="Color" style="background:${palNota(n.color).bg};border-color:rgba(0,0,0,.25)"></button>
       <button class="icono" data-modo-dibujo="${n.id}" title="Dibujar" style="margin-left:auto;font-size:11px;border-radius:6px;padding:4px 6px;background:${dibujando ? 'rgba(255,255,255,.75)' : 'transparent'};color:${dibujando ? '#4A4A4E' : 'var(--txt3)'}">✎</button>
       <button class="icono" data-borrar-dibujo="${n.id}" title="Borrar dibujo" style="font-size:11px">⌫</button>
-      <button class="icono" data-fuente="${n.id}" title="Tipografía" style="font-size:12px;color:#7A7A80">Aa</button>
+      <button class="icono" data-fuente="${n.id}" title="Tipografía: ${f.n}" style="font-size:12px;color:#7A7A80;font-family:${f.f}">Aa</button>
       <button class="icono" data-borrar-nota="${n.id}" style="font-size:14px;color:var(--txt3)">×</button>
     </div>
   </div>`;
@@ -446,10 +563,12 @@ function vCalendario() {
   if (u.selDia) {
     const sd = new Date(u.selDia + 'T00:00:00');
     const del = evs.filter(e => e.fecha === u.selDia);
-    const bloque = e => `<div class="bloque" draggable="true" data-ev="${e.id}" style="background:${pal(e.color).bg}">
+    const bloque = e => `<div class="bloque pastel" draggable="true" data-ev="${e.id}" style="background:${pal(e.color).bg}">
       <span>${esc(e.titulo)}</span><button class="icono" data-borrar-ev="${e.id}" style="font-size:14px">×</button></div>`;
     const horas = [];
-    for (let h = 7; h <= 22; h++) {
+    const conHora = del.filter(e => e.hora != null).map(e => e.hora);
+    const desde = Math.min(7, ...conHora), hasta = Math.max(22, ...conHora);
+    for (let h = desde; h <= hasta; h++) {
       horas.push(`<div class="hora" data-drop="${h}">
         <div style="flex:0 0 56px;font-size:11px;color:var(--txt4);padding-top:6px">${pad(h)}:00</div>
         <div style="flex:1;display:flex;gap:8px;flex-wrap:wrap">${del.filter(e => e.hora === h).map(bloque).join('')}</div>
@@ -484,7 +603,7 @@ function vCalendario() {
             <div style="font-size:17px;font-weight:${es ? 700 : 400};margin-top:3px">${dd.getDate()}</div>
           </div>
           <div style="display:flex;flex-direction:column;gap:5px">${evs.filter(e => e.fecha === k).map(e => `
-            <div style="background:${pal(e.color).bg};border-radius:9px;padding:6px 8px">
+            <div class="pastel" style="background:${pal(e.color).bg};border-radius:9px;padding:6px 8px">
               <div style="font-size:10px;color:var(--txt2)">${e.hora == null ? 'Sin hora' : pad(e.hora) + ':00'}</div>
               <div style="font-size:11px;line-height:1.3">${esc(e.titulo)}</div>
             </div>`).join('')}</div>
@@ -497,6 +616,7 @@ function vCalendario() {
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
         <div style="font-size:20px;font-weight:500;margin-right:auto">${MESES[c.m]} ${c.y}</div>
         ${seg}
+        ${c.y === u.ahora.getFullYear() && c.m === u.ahora.getMonth() ? '' : `<button class="pill" data-acc="mesHoy">Hoy</button>`}
         <button class="redondo" data-acc="mes" data-i="-1">‹</button>
         <button class="redondo" data-acc="mes" data-i="1">›</button>
       </div>
@@ -534,9 +654,9 @@ function vCalendario() {
       <div style="height:1px;background:var(--borde);margin:22px 0"></div>
       <div class="mini" style="margin-bottom:12px">En ${MESES[c.m].toLowerCase()}</div>
       <div style="display:flex;flex-direction:column;gap:8px;max-height:360px;overflow-y:auto">
-        ${delMes.map(e => `<div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;background:${pal(e.color).bg}">
+        ${delMes.map(e => `<div class="pastel" style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;background:${pal(e.color).bg}">
           <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.titulo)}</div>
+            <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${editable('eventos', e.id, 'titulo', e.titulo)}</div>
             <div style="font-size:11px;color:var(--txt2);margin-top:2px">${fechaCorta(e.fecha)}${e.hora == null ? '' : ' · ' + pad(e.hora) + ':00'}</div>
           </div>
           <button class="icono" data-borrar-ev="${e.id}">×</button>
@@ -559,21 +679,21 @@ function vTareas() {
       <button class="pill" style="margin-left:auto" data-acc="limpiarTareas">Limpiar completadas</button>
     </div>
     <div style="display:flex;gap:10px;margin-bottom:12px">
-      <input class="campo" style="border-radius:16px;padding:14px 16px;background:#FFF" data-f="tarea" data-b="tarea" data-enter="addTarea" placeholder="Nueva tarea…" value="${esc(b('tarea'))}">
+      <input class="campo" style="border-radius:16px;padding:14px 16px;background:var(--card)" data-f="tarea" data-b="tarea" data-enter="addTarea" placeholder="Nueva tarea…" value="${esc(b('tarea'))}">
       <button class="primario" style="border-radius:16px;padding:0 24px" data-acc="addTarea">+</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
       <span class="mini" style="letter-spacing:.12em;margin-right:4px">Etiqueta</span>
-      ${TAGS.map((t, i) => `<button data-acc="tareaEtq" data-i="${t}" style="cursor:pointer;border:1px solid ${u.tareaEtq === t ? pal(i).bar : 'var(--borde)'};background:${u.tareaEtq === t ? pal(i).bg : '#FFF'};border-radius:999px;padding:6px 12px;font-size:11px;color:#5A5A60">${t}</button>`).join('')}
+      ${TAGS.map((t, i) => `<button data-acc="tareaEtq" data-i="${t}" style="cursor:pointer;border:1px solid ${u.tareaEtq === t ? pal(i).bar : 'var(--borde)'};background:${u.tareaEtq === t ? pal(i).bg : 'var(--card)'};border-radius:999px;padding:6px 12px;font-size:11px;color:${u.tareaEtq === t ? '#5A5A60' : 'var(--txt-pill)'}">${t}</button>`).join('')}
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center">
       <span class="mini" style="letter-spacing:.12em;margin-right:4px">Filtrar</span>
-      ${['Todas', ...TAGS].map(t => `<button data-acc="tareaFiltro" data-i="${t}" style="cursor:pointer;border:1px solid ${u.tareaFiltro === t ? '#3B3B3F' : 'var(--borde)'};background:${u.tareaFiltro === t ? '#3B3B3F' : '#FFF'};color:${u.tareaFiltro === t ? '#FFF' : '#5A5A60'};border-radius:999px;padding:6px 12px;font-size:11px">${t}</button>`).join('')}
+      ${['Todas', ...TAGS].map(t => `<button data-acc="tareaFiltro" data-i="${t}" style="cursor:pointer;border:1px solid ${u.tareaFiltro === t ? '#3B3B3F' : 'var(--borde)'};background:${u.tareaFiltro === t ? '#3B3B3F' : 'var(--card)'};color:${u.tareaFiltro === t ? '#FFF' : 'var(--txt-pill)'};border-radius:999px;padding:6px 12px;font-size:11px">${t}</button>`).join('')}
     </div>
     <div style="display:flex;flex-direction:column;gap:8px">
       ${vis.map(t => `<div class="tarea">
         <button class="check" data-tarea="${t.id}" style="${t.hecha ? 'border-color:#B4DCBC;background:#B4DCBC' : ''}">${t.hecha ? '✓' : ''}</button>
-        <div style="flex:1;min-width:0;font-size:14px;${t.hecha ? 'color:var(--txt5);text-decoration:line-through' : ''}">${esc(t.texto)}</div>
+        <div style="flex:1;min-width:0;font-size:14px;${t.hecha ? 'color:var(--txt5);text-decoration:line-through' : ''}">${editable('tareas', t.id, 'texto', t.texto)}</div>
         <span class="etq" style="background:${pal(Math.max(0, TAGS.indexOf(t.etiqueta))).bg}">${esc(t.etiqueta)}</span>
         <button class="icono" data-borrar-tarea="${t.id}">×</button>
       </div>`).join('')}
@@ -598,7 +718,7 @@ function vProyectos() {
     return `<div>
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap">
         <div style="font-size:22px;font-weight:500;margin-right:auto">Proyectos</div>
-        <input class="campo" style="width:240px;background:#FFF" data-f="proy" data-b="proy" data-enter="addProyecto" placeholder="Nombre del proyecto" value="${esc(b('proy'))}">
+        <input class="campo" style="width:240px;background:var(--card)" data-f="proy" data-b="proy" data-enter="addProyecto" placeholder="Nombre del proyecto" value="${esc(b('proy'))}">
         <button class="primario" data-acc="addProyecto">+ Crear</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px">
@@ -635,11 +755,11 @@ function vProyectos() {
   return `<div style="max-width:860px;margin:0 auto">
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wrap">
       <button class="pill" data-acc="cerrarProyecto">‹ Proyectos</button>
-      <div style="font-size:22px;font-weight:500">${esc(p.nombre)}</div>
+      <div style="font-size:22px;font-weight:500">${editable('proyectos', p.id, 'nombre', p.nombre)}</div>
       <button class="pill" style="margin-left:auto;color:var(--peligro)" data-acc="borrarProyecto">Eliminar</button>
     </div>
     <div class="tarjeta" style="overflow:hidden">
-      <div style="background:${pal(p.color).bg};padding:26px;display:flex;gap:26px;align-items:center;flex-wrap:wrap">
+      <div class="pastel" style="background:${pal(p.color).bg};padding:26px;display:flex;gap:26px;align-items:center;flex-wrap:wrap">
         <div style="position:relative;width:104px;height:104px;border-radius:50%;flex:0 0 auto;background:conic-gradient(${pal(p.color).bar} ${pct}%, rgba(255,255,255,.65) 0)">
           <div style="position:absolute;inset:11px;border-radius:50%;background:#FFF;display:flex;flex-direction:column;align-items:center;justify-content:center">
             <div style="font-size:24px;font-weight:300">${pct}%</div>
@@ -672,7 +792,7 @@ function vProyectos() {
             <div style="flex:1;width:2px;min-height:22px;background:${s.hecho ? pal(p.color).bg : 'var(--borde-suave)'}"></div>
           </div>
           <div style="flex:1;padding-bottom:22px">
-            <div style="font-size:15px;${s.hecho ? 'color:var(--txt4);text-decoration:line-through' : ''}">${esc(s.texto)}</div>
+            <div style="font-size:15px;${s.hecho ? 'color:var(--txt4);text-decoration:line-through' : ''}">${editable('proyecto_pasos', s.id, 'texto', s.texto)}</div>
             <div style="font-size:11px;color:var(--txt5);margin-top:4px">Paso ${i + 1}${s.hecho ? ' · completado' : ''}</div>
           </div>
           <button class="icono" data-borrar-paso="${s.id}">×</button>
@@ -703,62 +823,94 @@ function vProyectos() {
 /* HÁBITOS                                                             */
 /* ------------------------------------------------------------------ */
 function vHabitos() {
-  const d = D(), n = estado.ui.ahora, hoy = kf(n);
-  if (!estado.ui.habitosSemana) estado.ui.habitosSemana = kf(lunesDe(n));
-  const inicio = new Date(estado.ui.habitosSemana + 'T00:00:00');
-  const fin = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + 6);
-  const esSemanaActual = estado.ui.habitosSemana === kf(lunesDe(n));
-  const dias = Array.from({ length: 7 }, (_, i) => {
-    const dd = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + i);
-    return { k: kf(dd), nom: DIAS[dd.getDay()].slice(0, 3), num: dd.getDate() };
-  });
+  const d = D(), u = estado.ui, n = u.ahora, hoy = kf(n);
   const marcado = (h, k) => d.habito_marcas.some(m => m.habito_id === h.id && m.fecha === k);
   const hechosHoy = d.habitos.filter(h => marcado(h, hoy)).length;
+  const porMes = u.modoHab === 'mes';
+  const seg = `<div class="segmento">
+    ${[['semana','Semana'],['mes','Mes']].map(([k, t]) => `<button class="${u.modoHab === k ? 'on' : ''}" data-acc="modoHab" data-i="${k}">${t}</button>`).join('')}
+  </div>`;
 
-  return `<div style="max-width:860px;margin:0 auto">
+  let titulo, esHoy, dias, ancho, gap;
+  if (porMes) {
+    if (!u.habitosMes) u.habitosMes = mesActual();
+    const ym = u.habitosMes, y = +ym.slice(0, 4), m = +ym.slice(5, 7) - 1;
+    titulo = mesTexto(ym);
+    esHoy = ym === mesActual();
+    dias = Array.from({ length: new Date(y, m + 1, 0).getDate() }, (_, i) => {
+      const dd = new Date(y, m, i + 1);
+      return { k: kf(dd), nom: DIAS[dd.getDay()].slice(0, 1), num: i + 1 };
+    });
+    ancho = 17; gap = 3;
+  } else {
+    if (!u.habitosSemana) u.habitosSemana = kf(lunesDe(n));
+    const inicio = new Date(u.habitosSemana + 'T00:00:00');
+    const fin = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + 6);
+    titulo = `${inicio.getDate()} ${MES3[inicio.getMonth()]} — ${fin.getDate()} ${MES3[fin.getMonth()]}`;
+    esHoy = u.habitosSemana === kf(lunesDe(n));
+    dias = Array.from({ length: 7 }, (_, i) => {
+      const dd = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + i);
+      return { k: kf(dd), nom: DIAS[dd.getDay()].slice(0, 3), num: dd.getDate() };
+    });
+    ancho = 34; gap = 8;
+  }
+  // En el mes, la última columna cuenta los días cumplidos sobre los días ya
+  // transcurridos; en la semana, muestra la racha.
+  const transcurridos = dias.filter(x => x.k <= hoy).length;
+  const celdaMes = `width:${ancho}px;height:${ancho}px;border-radius:5px;font-size:9px`;
+
+  return `<div style="max-width:${porMes ? 960 : 860}px;margin:0 auto">
     <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:20px;flex-wrap:wrap">
       <div style="font-size:22px;font-weight:500">Hábitos</div>
       <div style="font-size:12px;color:var(--txt4)">${hechosHoy} de ${d.habitos.length} hechos hoy</div>
     </div>
     <div style="display:flex;gap:10px;margin-bottom:20px">
-      <input class="campo" style="border-radius:16px;padding:14px 16px;background:#FFF" data-f="hab" data-b="hab" data-enter="addHabito" placeholder="Nuevo hábito… (ej. leer 20 min)" value="${esc(b('hab'))}">
+      <input class="campo" style="border-radius:16px;padding:14px 16px;background:var(--card)" data-f="hab" data-b="hab" data-enter="addHabito" placeholder="Nuevo hábito… (ej. leer 20 min)" value="${esc(b('hab'))}">
       <button class="primario" style="border-radius:16px;padding:0 24px" data-acc="addHabito">+</button>
     </div>
-    <div class="tarjeta" style="padding:22px 24px">
+    <div class="tarjeta" style="padding:22px 24px;overflow-x:auto">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-        <div style="font-size:13px;color:var(--txt3)">${inicio.getDate()} ${MES3[inicio.getMonth()]} — ${fin.getDate()} ${MES3[fin.getMonth()]}</div>
+        <div style="font-size:13px;color:var(--txt3)">${titulo}</div>
         <div style="display:flex;gap:8px;margin-left:auto;align-items:center">
-          ${esSemanaActual ? '' : `<button class="pill" data-acc="habitosHoy">Hoy</button>`}
+          ${seg}
+          ${esHoy ? '' : `<button class="pill" data-acc="habitosHoy">Hoy</button>`}
           <button class="redondo" data-acc="habitosSemana" data-i="-1">‹</button>
           <button class="redondo" data-acc="habitosSemana" data-i="1">›</button>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-        <div style="flex:1"></div>
-        <div style="flex:0 0 auto;display:flex;gap:8px">
-          ${dias.map(x => `<div style="width:34px;text-align:center">
-            <div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--txt5)">${x.nom}</div>
-            <div style="font-size:11px;color:${x.k === hoy ? 'var(--sel-fg)' : 'var(--txt5)'};margin-top:2px">${x.num}</div>
+        <div style="flex:1;min-width:120px"></div>
+        <div style="flex:0 0 auto;display:flex;gap:${gap}px">
+          ${dias.map(x => `<div style="width:${ancho}px;text-align:center">
+            <div style="font-size:9px;letter-spacing:${porMes ? 0 : '.1em'};text-transform:uppercase;color:var(--txt5)">${x.nom}</div>
+            <div style="font-size:${porMes ? 9 : 11}px;color:${x.k === hoy ? 'var(--sel-fg)' : 'var(--txt5)'};font-weight:${x.k === hoy ? 700 : 400};margin-top:2px">${x.num}</div>
           </div>`).join('')}
         </div>
-        <div style="flex:0 0 54px;text-align:right;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--txt5)">Racha</div>
+        <div style="flex:0 0 54px;text-align:right;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--txt5)">${porMes ? 'Días' : 'Racha'}</div>
         <div style="flex:0 0 20px"></div>
       </div>
       ${d.habitos.length ? d.habitos.map(h => {
-        let racha = 0;
-        for (let i = 0; i < 400; i++) {
-          const dd = new Date(n.getFullYear(), n.getMonth(), n.getDate() - i);
-          if (marcado(h, kf(dd))) racha++; else break;
+        let dato;
+        if (porMes) {
+          dato = `${dias.filter(x => marcado(h, x.k)).length}/${transcurridos}`;
+        } else {
+          // Si hoy todavía no está marcado, la racha sigue viva desde ayer.
+          let racha = 0;
+          for (let i = marcado(h, hoy) ? 0 : 1; i < 400; i++) {
+            const dd = new Date(n.getFullYear(), n.getMonth(), n.getDate() - i);
+            if (marcado(h, kf(dd))) racha++; else break;
+          }
+          dato = racha + 'd';
         }
         return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--borde-fino)">
-          <div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px">
+          <div style="flex:1;min-width:120px;display:flex;align-items:center;gap:10px">
             <span style="flex:0 0 auto;width:10px;height:10px;border-radius:50%;background:${pal(h.color).bar}"></span>
-            <span style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.nombre)}</span>
+            <span style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${editable('habitos', h.id, 'nombre', h.nombre)}</span>
           </div>
-          <div style="flex:0 0 auto;display:flex;gap:8px">
-            ${dias.map(x => { const on = marcado(h, x.k); return `<button class="celda" data-marca="${h.id}" data-fecha="${x.k}" style="${on ? `background:${pal(h.color).bg};border-color:${pal(h.color).bar}` : ''}">${on ? '✓' : ''}</button>`; }).join('')}
+          <div style="flex:0 0 auto;display:flex;gap:${gap}px">
+            ${dias.map(x => { const on = marcado(h, x.k); return `<button class="celda" data-marca="${h.id}" data-fecha="${x.k}" title="${fechaCorta(x.k)}" style="${porMes ? celdaMes + ';padding:0;' : ''}${on ? `background:${pal(h.color).bg};border-color:${pal(h.color).bar};color:#7C7C82` : ''}">${on ? '✓' : ''}</button>`; }).join('')}
           </div>
-          <div style="flex:0 0 54px;text-align:right;font-size:13px;color:var(--txt2)">${racha}d</div>
+          <div style="flex:0 0 54px;text-align:right;font-size:13px;color:var(--txt2)">${dato}</div>
           <button class="icono" data-borrar-habito="${h.id}" style="flex:0 0 20px;text-align:center">×</button>
         </div>`;
       }).join('') : '<div style="padding:18px 2px;font-size:13px;color:var(--txt4)">Todavía no hay hábitos. Agregá el primero arriba.</div>'}
@@ -770,12 +922,16 @@ function vHabitos() {
 /* DINERO                                                              */
 /* ------------------------------------------------------------------ */
 function vDinero() {
-  const d = D(), u = estado.ui, hoy = kf(u.ahora), mes = hoy.slice(0, 7);
-  const base = num(d.perfil.dinero_base), meta = num(d.perfil.meta_ahorro);
+  const d = D(), u = estado.ui, mes = mesDinero(), esActual = mes === mesActual();
+  const nombreMes = MESES[+mes.slice(5, 7) - 1].toLowerCase();
+  const mensual = d.dinero_mensual.find(x => x.mes === mes) || {};
+  const base = num(mensual.dinero_base), meta = num(mensual.meta_ahorro);
   const delMes = l => l.filter(x => String(x.fecha).slice(0, 7) === mes);
   const suma = l => l.reduce((a, x) => a + num(x.monto), 0);
-  const vars = delMes(d.gastos_variables), ings = delMes(d.ingresos);
-  const sF = suma(d.gastos_fijos), sV = suma(vars), sI = suma(ings), sA = suma(d.ahorros);
+  const vars = delMes(d.gastos_variables), ings = delMes(d.ingresos), ahorros = delMes(d.ahorros);
+  const fijos = d.gastos_fijos.filter(g => mesFijo(g) === mes);
+  const fijosAnt = d.gastos_fijos.filter(g => mesFijo(g) === correrMes(mes, -1));
+  const sF = suma(fijos), sV = suma(vars), sI = suma(ings), sA = suma(ahorros);
   const gastos = sF + sV, entra = base + sI, disp = entra - gastos - sA;
   const pctG = entra > 0 ? Math.min(100, Math.round(gastos * 100 / entra)) : 0;
   const pctA = meta > 0 ? Math.min(100, Math.round(sA * 100 / meta)) : 0;
@@ -783,28 +939,35 @@ function vDinero() {
   const cols = innerWidth < 900 ? '1fr' : innerWidth < 1180 ? 'repeat(2,minmax(0,1fr))' : 'repeat(3,minmax(0,1fr))';
 
   return `<div style="display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:22px;font-weight:500;margin-right:auto">${mesTexto(mes)}</div>
+      ${esActual ? '' : `<button class="pill" data-acc="mesDineroHoy">Este mes</button>`}
+      <button class="redondo" data-acc="mesDinero" data-i="-1" title="Mes anterior">‹</button>
+      <button class="redondo" data-acc="mesDinero" data-i="1" title="Mes siguiente">›</button>
+    </div>
+    ${d.faltan?.includes('dinero_mensual') ? `<div class="tarjeta pastel" style="padding:14px 18px;background:#FBE2CE;font-size:13px">Falta correr el bloque nuevo de <b>esquema.sql</b> en Supabase: hasta entonces el dinero base, la meta y los gastos fijos no se pueden guardar por mes.</div>` : ''}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px">
       <div class="tarjeta" style="padding:22px">
         <div class="mini">Dinero base</div>
         <div style="display:flex;align-items:baseline;gap:4px;margin-top:8px">
           <span style="font-size:17px;color:var(--txt5)">$</span>
-          <input data-f="base" data-perfil="dinero_base" value="${base || ''}" placeholder="0" style="width:100%;border:none;background:transparent;font-size:28px;font-weight:300;padding:0">
+          <input data-f="base" data-mensual="dinero_base" value="${base ? base.toLocaleString('es-AR') : ''}" placeholder="0" style="width:100%;border:none;background:transparent;font-size:28px;font-weight:300;padding:0">
         </div>
         <div style="font-size:11px;color:var(--txt5);margin-top:6px">Con lo que arrancás el mes</div>
       </div>
-      <div class="tarjeta" style="padding:22px;background:${disp < 0 ? '#FADDE1' : '#D8E8F7'}">
+      <div class="tarjeta pastel" style="padding:22px;background:${disp < 0 ? '#FADDE1' : '#D8E8F7'}">
         <div class="mini" style="color:var(--txt2)">Disponible</div>
         <div style="font-size:28px;font-weight:300;margin-top:8px">${money(disp)}</div>
         <div style="font-size:11px;color:var(--txt2);margin-top:6px">${disp < 0 ? 'Estás gastando de más' : 'Después de gastos y ahorro'}</div>
       </div>
       <div class="tarjeta" style="padding:22px">
-        <div class="mini">Gastado este mes</div>
+        <div class="mini">Gastado en ${nombreMes}</div>
         <div style="font-size:28px;font-weight:300;margin-top:8px">${money(gastos)}</div>
         <div class="barra" style="margin-top:12px"><i style="width:${pctG}%;background:#EFBCC4"></i></div>
         <div style="font-size:11px;color:var(--txt5);margin-top:7px">${entra > 0 ? pctG + '% de lo que entró' : 'Cargá tu dinero base'}</div>
       </div>
       <div class="tarjeta" style="padding:22px">
-        <div class="mini">Ahorrado</div>
+        <div class="mini">Ahorrado en ${nombreMes}</div>
         <div style="font-size:28px;font-weight:300;margin-top:8px">${money(sA)}</div>
         <div class="barra" style="margin-top:12px"><i style="width:${pctA}%;background:#B4DCBC"></i></div>
         <div style="font-size:11px;color:var(--txt5);margin-top:7px">${meta > 0 ? 'Meta ' + money(meta) : 'Definí una meta abajo'}</div>
@@ -818,16 +981,17 @@ function vDinero() {
           <div style="font-size:13px;color:var(--txt2)">${money(sF)}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
-          ${d.gastos_fijos.length ? d.gastos_fijos.map(g => { const pg = pagado(g); return `
-            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:${pal(g.color).bg}">
+          ${fijos.length ? fijos.map(g => { const pg = pagado(g); return `
+            <div class="pastel" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:${pal(g.color).bg}">
               <button class="check" data-pago="${g.id}" style="width:20px;height:20px;font-size:10px;${pg ? `border-color:${pal(g.color).bar};background:${pal(g.color).bar}` : 'border-color:rgba(0,0,0,.12);background:transparent'}">${pg ? '✓' : ''}</button>
               <div style="flex:1;min-width:0">
-                <div style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${pg ? 'color:#8A8A90' : ''}">${esc(g.nombre)}</div>
-                <div style="font-size:11px;color:var(--txt2);margin-top:2px">${pg ? 'Pagado este mes' : 'Pendiente'}</div>
+                <div style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${pg ? 'color:#8A8A90' : ''}">${editable('gastos_fijos', g.id, 'nombre', g.nombre)}</div>
+                <div style="font-size:11px;color:var(--txt2);margin-top:2px">${pg ? 'Pagado' : 'Pendiente'}</div>
               </div>
-              <div style="font-size:14px;font-weight:500">${money(num(g.monto))}</div>
+              <div style="font-size:14px;font-weight:500">${editable('gastos_fijos', g.id, 'monto', g.monto)}</div>
               <button class="icono" data-borrar-fijo="${g.id}">×</button>
-            </div>`; }).join('') : '<div style="padding:14px 2px;font-size:13px;color:var(--txt4)">Alquiler, luz, internet… lo que se repite todos los meses.</div>'}
+            </div>`; }).join('') : `<div style="padding:14px 2px;font-size:13px;color:var(--txt4)">Alquiler, luz, internet… lo que se repite todos los meses.</div>
+            ${fijosAnt.length ? `<button class="pill" data-acc="copiarFijos" style="align-self:flex-start">Copiar los ${fijosAnt.length} de ${MESES[+correrMes(mes, -1).slice(5, 7) - 1].toLowerCase()}</button>` : ''}`}
         </div>
         <div style="display:flex;gap:8px">
           <input class="campo" data-f="fN" data-b="fN" data-enter="addFijo" placeholder="Concepto" value="${esc(b('fN'))}">
@@ -842,7 +1006,7 @@ function vDinero() {
           <div style="font-size:13px;color:var(--txt2)">${money(sV)}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-          ${CATS.map((c, i) => `<button data-acc="varCat" data-i="${c}" style="cursor:pointer;border:1px solid ${u.varCat === c ? pal(i).bar : 'var(--borde)'};background:${u.varCat === c ? pal(i).bg : '#FFF'};border-radius:999px;padding:6px 12px;font-size:11px;color:#5A5A60">${c}</button>`).join('')}
+          ${CATS.map((c, i) => `<button data-acc="varCat" data-i="${c}" style="cursor:pointer;border:1px solid ${u.varCat === c ? pal(i).bar : 'var(--borde)'};background:${u.varCat === c ? pal(i).bg : 'var(--card)'};border-radius:999px;padding:6px 12px;font-size:11px;color:${u.varCat === c ? '#5A5A60' : 'var(--txt-pill)'}">${c}</button>`).join('')}
         </div>
         <div style="display:flex;gap:8px;margin-bottom:16px">
           <input class="campo" data-f="vN" data-b="vN" data-enter="addVar" placeholder="¿En qué gastaste?" value="${esc(b('vN'))}">
@@ -853,12 +1017,12 @@ function vDinero() {
           ${vars.length ? vars.map(g => `<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;border:1px solid var(--borde-fino)">
             <span style="flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:${pal(Math.max(0, CATS.indexOf(g.categoria))).bar}"></span>
             <div style="flex:1;min-width:0">
-              <div style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.nombre)}</div>
+              <div style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${editable('gastos_variables', g.id, 'nombre', g.nombre)}</div>
               <div style="font-size:11px;color:var(--txt4);margin-top:2px">${esc(g.categoria)} · ${fechaCorta(g.fecha)}</div>
             </div>
-            <div style="font-size:14px;font-weight:500">${money(num(g.monto))}</div>
+            <div style="font-size:14px;font-weight:500">${editable('gastos_variables', g.id, 'monto', g.monto)}</div>
             <button class="icono" data-borrar-var="${g.id}">×</button>
-          </div>`).join('') : '<div style="padding:14px 2px;font-size:13px;color:var(--txt4)">Todavía no registraste gastos este mes.</div>'}
+          </div>`).join('') : `<div style="padding:14px 2px;font-size:13px;color:var(--txt4)">Todavía no registraste gastos en ${nombreMes}.</div>`}
         </div>
       </div>
 
@@ -869,12 +1033,12 @@ function vDinero() {
             <div style="font-size:13px;color:var(--txt2)">${money(sI)}</div>
           </div>
           <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
-            ${ings.length ? ings.map(i => `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:#DCEFDF">
+            ${ings.length ? ings.map(i => `<div class="pastel" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:#DCEFDF">
               <div style="flex:1;min-width:0">
-                <div style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.origen)}</div>
+                <div style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${editable('ingresos', i.id, 'origen', i.origen)}</div>
                 <div style="font-size:11px;color:var(--txt2);margin-top:2px">${i.detalle ? esc(i.detalle) + ' · ' : ''}${fechaCorta(i.fecha)}</div>
               </div>
-              <div style="font-size:14px;font-weight:500">${money(num(i.monto))}</div>
+              <div style="font-size:14px;font-weight:500">${editable('ingresos', i.id, 'monto', i.monto)}</div>
               <button class="icono" data-borrar-ing="${i.id}">×</button>
             </div>`).join('') : '<div style="padding:14px 2px;font-size:13px;color:var(--txt4)">Trabajos extra, ventas, regalos.</div>'}
           </div>
@@ -892,7 +1056,7 @@ function vDinero() {
           <div class="rotulo" style="margin-bottom:18px">Ahorro</div>
           <div style="display:flex;align-items:center;gap:20px;margin-bottom:18px">
             <div style="position:relative;width:92px;height:92px;border-radius:50%;flex:0 0 auto;background:conic-gradient(#B4DCBC ${pctA}%, var(--borde-suave) 0)">
-              <div style="position:absolute;inset:10px;border-radius:50%;background:#FFF;display:flex;flex-direction:column;align-items:center;justify-content:center">
+              <div style="position:absolute;inset:10px;border-radius:50%;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center">
                 <div style="font-size:19px;font-weight:300">${pctA}%</div>
                 <div style="font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:var(--txt4)">meta</div>
               </div>
@@ -901,7 +1065,7 @@ function vDinero() {
               <div class="mini" style="margin-bottom:6px">Meta de ahorro</div>
               <div style="display:flex;align-items:baseline;gap:4px">
                 <span style="font-size:15px;color:var(--txt5)">$</span>
-                <input data-f="meta" data-perfil="meta_ahorro" value="${meta || ''}" placeholder="0" style="width:100%;border:none;background:transparent;font-size:22px;font-weight:300;padding:0">
+                <input data-f="meta" data-mensual="meta_ahorro" value="${meta ? meta.toLocaleString('es-AR') : ''}" placeholder="0" style="width:100%;border:none;background:transparent;font-size:22px;font-weight:300;padding:0">
               </div>
               <div style="font-size:11px;color:var(--txt5);margin-top:4px">${meta > 0 ? (sA >= meta ? 'Meta cumplida' : 'Faltan ' + money(meta - sA)) : 'Sin meta definida'}</div>
             </div>
@@ -912,12 +1076,12 @@ function vDinero() {
             <button class="primario" style="padding:0 18px" data-acc="addAhorro">+</button>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto">
-            ${d.ahorros.map(a => `<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;background:#F7FAF8">
+            ${ahorros.map(a => `<div class="pastel" style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;background:#F7FAF8">
               <div style="flex:1;min-width:0">
-                <div style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.nombre)}</div>
+                <div style="font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${editable('ahorros', a.id, 'nombre', a.nombre)}</div>
                 <div style="font-size:11px;color:var(--txt4);margin-top:2px">${fechaCorta(a.fecha)}</div>
               </div>
-              <div style="font-size:14px;font-weight:500">${money(num(a.monto))}</div>
+              <div style="font-size:14px;font-weight:500">${editable('ahorros', a.id, 'monto', a.monto)}</div>
               <button class="icono" data-borrar-ahorro="${a.id}">×</button>
             </div>`).join('')}
           </div>
@@ -928,8 +1092,74 @@ function vDinero() {
 }
 
 /* ------------------------------------------------------------------ */
+/* NOTAS DE TEXTO (tabla "apuntes")                                    */
+/* ------------------------------------------------------------------ */
+// Como en la app de notas del celular: la primera línea es el título y
+// lo que sigue se ve como adelanto en la lista.
+const lineasApunte = a => String(a.texto || '').split('\n').map(l => l.trim()).filter(Boolean);
+const tituloApunte = a => (lineasApunte(a)[0] || 'Nota nueva').slice(0, 80);
+const adelantoApunte = a => lineasApunte(a).slice(1).join(' ').slice(0, 90);
+function fechaApunte(a) {
+  const d = new Date(a.actualizado_en || a.creado_en);
+  if (isNaN(d)) return '';
+  if (kf(d) === kf(estado.ui.ahora)) return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  return d.getDate() + ' ' + MES3[d.getMonth()] + (d.getFullYear() !== estado.ui.ahora.getFullYear() ? ' ' + d.getFullYear() : '');
+}
+// Una nota que se deja vacía se descarta sola, como en el celular.
+function descartarApunteVacio(salvo) {
+  const a = D().apuntes.find(x => x.id === estado.ui.apunte);
+  if (!a || a.id === salvo || String(a.texto || '').trim()) return;
+  quitar('apuntes', a.id);
+  seguro(() => db.borrar('apuntes', a.id));
+}
+function itemApunte(a, sel) {
+  return `<button data-apunte="${a.id}" style="width:100%;text-align:left;border:none;cursor:pointer;border-radius:14px;padding:12px 14px;background:${sel ? 'var(--sel-bg)' : 'transparent'};color:var(--txt)">
+    <span data-titulo style="display:block;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(tituloApunte(a))}</span>
+    <span style="display:flex;gap:8px;font-size:12px;color:var(--txt4);margin-top:3px">
+      <span style="flex:0 0 auto">${fechaApunte(a)}</span>
+      <span data-adelanto style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(adelantoApunte(a)) || 'Sin más texto'}</span>
+    </span>
+  </button>`;
+}
+
+function vApuntes() {
+  const d = D(), u = estado.ui;
+  if (d.faltan?.includes('apuntes')) {
+    return `<div class="tarjeta pastel" style="max-width:760px;margin:0 auto;padding:18px 22px;background:#FBE2CE;font-size:13px;line-height:1.5">Para usar las notas de texto falta correr el <b>esquema.sql</b> actualizado en Supabase (SQL Editor → Run). Es seguro correrlo de nuevo: no borra nada.</div>`;
+  }
+  const lista = [...d.apuntes].sort((a, x) => String(x.actualizado_en).localeCompare(String(a.actualizado_en)));
+  const sel = d.apuntes.find(a => a.id === u.apunte);
+  if (!sel) u.apunte = null;
+  const angosto = innerWidth < 900;
+
+  const columnaLista = `<section class="tarjeta" style="flex:0 0 ${angosto ? 'auto' : '300px'};padding:16px;display:flex;flex-direction:column;gap:12px;max-height:${angosto ? 'none' : '76vh'}">
+    <div style="display:flex;align-items:center;gap:10px;padding:4px 6px 0">
+      <div style="font-size:22px;font-weight:500;margin-right:auto">Notas</div>
+      <button class="primario" style="border-radius:999px;padding:8px 16px;font-size:13px" data-acc="nuevoApunte">+ Nueva</button>
+    </div>
+    <div style="font-size:12px;color:var(--txt4);padding:0 6px">${lista.length} ${lista.length === 1 ? 'nota' : 'notas'}</div>
+    <div style="display:flex;flex-direction:column;gap:2px;overflow-y:auto">
+      ${lista.length ? lista.map(a => itemApunte(a, a.id === u.apunte)).join('') : '<div style="padding:14px 6px;font-size:13px;color:var(--txt4);line-height:1.5">Todavía no hay notas. Tocá "+ Nueva" para escribir la primera.</div>'}
+    </div>
+  </section>`;
+
+  const editor = sel ? `<section class="tarjeta" style="flex:1;min-width:0;padding:22px 26px;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:center;gap:10px">
+      ${angosto ? `<button class="pill" data-acc="cerrarApunte">‹ Notas</button>` : ''}
+      <div style="font-size:12px;color:var(--txt4);margin-right:auto">${fechaApunte(sel) ? 'Editada ' + (kf(new Date(sel.actualizado_en || sel.creado_en)) === kf(u.ahora) ? 'hoy a las ' : 'el ') + fechaApunte(sel) : ''}</div>
+      <button class="pill" style="color:var(--peligro)" data-acc="borrarApunte">Eliminar</button>
+    </div>
+    <textarea data-f="apunte-${sel.id}" data-apunte-texto="${sel.id}" placeholder="Escribí tu nota… La primera línea es el título." style="flex:1;width:100%;min-height:60vh;border:none;outline:none;background:transparent;font-size:15px;line-height:1.65;color:var(--txt)">${esc(sel.texto)}</textarea>
+  </section>` : `<section class="tarjeta" style="flex:1;min-width:0;padding:22px;display:flex;align-items:center;justify-content:center;min-height:40vh;color:var(--txt4);font-size:13px">Elegí una nota de la lista o creá una nueva.</section>`;
+
+  if (angosto) return `<div>${sel ? editor : columnaLista}</div>`;
+  return `<div style="display:flex;gap:20px;align-items:stretch">${columnaLista}${editor}</div>`;
+}
+
+/* ------------------------------------------------------------------ */
 /* acciones                                                            */
 /* ------------------------------------------------------------------ */
+const CAMPOS_DINERO = ['fN', 'fM', 'vN', 'vM', 'iO', 'iD', 'iM', 'aN', 'aM'];
 const quitar = (t, id) => { D()[t] = D()[t].filter(x => x.id !== id); };
 
 const ACCIONES = {
@@ -946,15 +1176,36 @@ const ACCIONES = {
     const c = estado.ui.cursor, m = c.m + (+i);
     estado.ui.cursor = { y: c.y + Math.floor(m / 12), m: (m % 12 + 12) % 12 };
   },
+  mesHoy: () => { const n = estado.ui.ahora; estado.ui.cursor = { y: n.getFullYear(), m: n.getMonth() }; },
   semana: i => {
     const w = new Date(estado.ui.semana + 'T00:00:00');
     estado.ui.semana = kf(new Date(w.getFullYear(), w.getMonth(), w.getDate() + (+i) * 7));
   },
+  modoHab: i => { estado.ui.modoHab = i; },
+  nuevoApunte: () => seguro(async () => {
+    descartarApunteVacio();
+    const a = await db.crear('apuntes', { texto: '', actualizado_en: new Date().toISOString() });
+    D().apuntes.unshift(a);
+    estado.ui.apunte = a.id;
+    // Se deja el cursor listo para escribir.
+    setTimeout(() => $('[data-apunte-texto]')?.focus());
+  }),
+  cerrarApunte: () => { descartarApunteVacio(); estado.ui.apunte = null; },
+  borrarApunte: () => seguro(async () => {
+    const id = estado.ui.apunte;
+    const a = D().apuntes.find(x => x.id === id);
+    if (!a) return;
+    if (String(a.texto || '').trim() && !confirm('¿Eliminar la nota "' + tituloApunte(a) + '"? No se puede deshacer.')) return;
+    quitar('apuntes', id);
+    estado.ui.apunte = null;
+    await db.borrar('apuntes', id);
+  }),
   habitosSemana: i => {
+    if (estado.ui.modoHab === 'mes') { estado.ui.habitosMes = correrMes(estado.ui.habitosMes || mesActual(), +i); return; }
     const w = new Date(estado.ui.habitosSemana + 'T00:00:00');
     estado.ui.habitosSemana = kf(new Date(w.getFullYear(), w.getMonth(), w.getDate() + (+i) * 7));
   },
-  habitosHoy: () => { estado.ui.habitosSemana = kf(lunesDe(estado.ui.ahora)); },
+  habitosHoy: () => { estado.ui.habitosSemana = kf(lunesDe(estado.ui.ahora)); estado.ui.habitosMes = mesActual(); },
   salir: async () => { await db.salir(); },
   exportar: () => {
     const a = document.createElement('a');
@@ -1051,39 +1302,85 @@ const ACCIONES = {
     D().habitos.push(h); limpiar('hab');
   }),
 
+  // Al cambiar de mes se vacían los campos a medio escribir, para que nada
+  // tipeado en un mes aparezca en otro.
+  mesDinero: i => { estado.ui.mesDinero = correrMes(mesDinero(), +i); limpiar(...CAMPOS_DINERO); },
+  mesDineroHoy: () => { estado.ui.mesDinero = null; limpiar(...CAMPOS_DINERO); },
+  copiarFijos: () => seguro(async () => {
+    const mes = mesDinero(), ant = correrMes(mes, -1);
+    if (D().gastos_fijos.some(g => mesFijo(g) === mes)) return;
+    for (const g of D().gastos_fijos.filter(g => mesFijo(g) === ant)) {
+      D().gastos_fijos.push(await db.crear('gastos_fijos', { nombre: g.nombre, monto: num(g.monto), color: g.color, mes }));
+    }
+  }),
   addFijo: () => seguro(async () => {
     const n = b('fN').trim(); if (!n) return;
-    const g = await db.crear('gastos_fijos', { nombre: n, monto: num(b('fM')), color: D().gastos_fijos.length % 6 });
+    const mes = mesDinero();
+    const g = await db.crear('gastos_fijos', { nombre: n, monto: num(b('fM')), color: D().gastos_fijos.filter(x => mesFijo(x) === mes).length % 6, mes });
     D().gastos_fijos.push(g); limpiar('fN', 'fM');
   }),
   addVar: () => seguro(async () => {
     const n = b('vN').trim(); if (!n) return;
-    const g = await db.crear('gastos_variables', { nombre: n, monto: num(b('vM')), categoria: estado.ui.varCat, fecha: kf(estado.ui.ahora) });
+    const g = await db.crear('gastos_variables', { nombre: n, monto: num(b('vM')), categoria: estado.ui.varCat, fecha: fechaParaMes(mesDinero()) });
     D().gastos_variables.unshift(g); limpiar('vN', 'vM');
   }),
   addIngreso: () => seguro(async () => {
     const n = b('iO').trim(); if (!n) return;
-    const i = await db.crear('ingresos', { origen: n, detalle: b('iD').trim(), monto: num(b('iM')), fecha: kf(estado.ui.ahora) });
+    const i = await db.crear('ingresos', { origen: n, detalle: b('iD').trim(), monto: num(b('iM')), fecha: fechaParaMes(mesDinero()) });
     D().ingresos.unshift(i); limpiar('iO', 'iD', 'iM');
   }),
   addAhorro: () => seguro(async () => {
     if (!num(b('aM'))) return;
-    const a = await db.crear('ahorros', { nombre: b('aN').trim() || 'Aporte', monto: num(b('aM')), fecha: kf(estado.ui.ahora) });
+    const a = await db.crear('ahorros', { nombre: b('aN').trim() || 'Aporte', monto: num(b('aM')), fecha: fechaParaMes(mesDinero()) });
     D().ahorros.unshift(a); limpiar('aN', 'aM');
   })
 };
 
+/* ---------- marcas de sí/no (hábitos, pagos del mes) ----------
+   La marca aparece al instante; mientras se guarda se ignoran los clics
+   sobre ella, así un doble clic no intenta crearla dos veces. */
+function alternar(tabla, existente, nueva) {
+  if (existente?.pendiente) return;
+  if (existente) {
+    D()[tabla] = D()[tabla].filter(x => x !== existente);
+    render();
+    return seguro(() => db.borrar(tabla, existente.id));
+  }
+  const tmp = { ...nueva, id: 'tmp-' + crypto.randomUUID(), pendiente: true };
+  D()[tabla].push(tmp);
+  render();
+  return seguro(async () => {
+    try { const fila = await db.crear(tabla, nueva); delete tmp.pendiente; Object.assign(tmp, fila); }
+    catch (e) { D()[tabla] = D()[tabla].filter(x => x !== tmp); throw e; }
+    finally { render(); }
+  });
+}
+
 /* ---------- delegación de eventos ---------- */
 document.addEventListener('click', async ev => {
-  const el = ev.target.closest('[data-acc],[data-tab],[data-ir],[data-dia],[data-proyecto],[data-tarea],[data-paso],[data-marca],[data-pago],[data-etq-proy],[data-notacolor],[data-fuente],[data-modo-dibujo],[data-borrar-dibujo],[data-borrar-nota],[data-borrar-ev],[data-borrar-tarea],[data-borrar-paso],[data-borrar-pnota],[data-borrar-habito],[data-borrar-fijo],[data-borrar-var],[data-borrar-ing],[data-borrar-ahorro]');
+  const el = ev.target.closest('[data-apunte],[data-editar],[data-acc],[data-tab],[data-ir],[data-dia],[data-proyecto],[data-tarea],[data-paso],[data-marca],[data-pago],[data-etq-proy],[data-notacolor],[data-paleta],[data-fuente],[data-modo-dibujo],[data-borrar-dibujo],[data-borrar-nota],[data-borrar-ev],[data-borrar-tarea],[data-borrar-paso],[data-borrar-pnota],[data-borrar-habito],[data-borrar-fijo],[data-borrar-var],[data-borrar-ing],[data-borrar-ahorro]');
   if (!el || !estado.datos) return;
   const s = el.dataset;
+
+  if (s.apunte) {
+    descartarApunteVacio(s.apunte);
+    estado.ui.apunte = s.apunte;
+    return render();
+  }
+  if (s.editar) {
+    const [tabla, id, campo] = s.editar.split('|');
+    estado.ui.editando = { tabla, id, campo };
+    render();
+    const i = $('[data-edicion]');
+    if (i) { i.focus(); i.select(); }
+    return;
+  }
 
   // Caso especial: no re-renderizamos acá, para no perder la referencia
   // al <input type="file"> justo cuando se abre el selector del sistema.
   if (s.acc === 'importarClick') { $('#importFile')?.click(); return; }
   if (s.acc) { await ACCIONES[s.acc]?.(s.i); return render(); }
-  if (s.tab) { Object.assign(estado.ui, { pestana: s.tab, selDia: null, proyecto: null, q: '', panelRecordatorios: false, panelCuenta: false }); return render(); }
+  if (s.tab) { if (s.tab !== 'apuntes') descartarApunteVacio(); Object.assign(estado.ui, { pestana: s.tab, selDia: null, proyecto: null, q: '', editando: null, panelRecordatorios: false, panelCuenta: false }); return render(); }
   if (s.ir) { Object.assign(estado.ui, JSON.parse(s.ir), { q: '', panelRecordatorios: false, panelCuenta: false }); return render(); }
   if (s.dia) { estado.ui.selDia = s.dia; return render(); }
   if (s.proyecto) { estado.ui.proyecto = s.proyecto; return render(); }
@@ -1094,20 +1391,17 @@ document.addEventListener('click', async ev => {
 
   if (s.marca) {
     const m = D().habito_marcas.find(x => x.habito_id === s.marca && x.fecha === s.fecha);
-    if (m) { D().habito_marcas = D().habito_marcas.filter(x => x !== m); render(); return seguro(() => db.borrar('habito_marcas', m.id)); }
-    render();
-    return seguro(async () => { D().habito_marcas.push(await db.crear('habito_marcas', { habito_id: s.marca, fecha: s.fecha })); render(); });
+    return alternar('habito_marcas', m, { habito_id: s.marca, fecha: s.fecha });
   }
   if (s.pago) {
-    const mes = kf(estado.ui.ahora).slice(0, 7);
+    const mes = mesDinero();
     const p = D().gastos_fijos_pagos.find(x => x.gasto_id === s.pago && x.mes === mes);
-    if (p) { D().gastos_fijos_pagos = D().gastos_fijos_pagos.filter(x => x !== p); render(); return seguro(() => db.borrar('gastos_fijos_pagos', p.id)); }
-    render();
-    return seguro(async () => { D().gastos_fijos_pagos.push(await db.crear('gastos_fijos_pagos', { gasto_id: s.pago, mes })); render(); });
+    return alternar('gastos_fijos_pagos', p, { gasto_id: s.pago, mes });
   }
 
-  if (s.notacolor) { const n = D().notas.find(x => x.id === s.notacolor); n.color = +s.i; render(); return seguro(() => db.actualizar('notas', n.id, { color: n.color })); }
-  if (s.fuente)    { const n = D().notas.find(x => x.id === s.fuente); n.fuente = ((n.fuente | 0) + 1) % 3; render(); return seguro(() => db.actualizar('notas', n.id, { fuente: n.fuente })); }
+  if (s.paleta) { estado.ui.paletaNota = estado.ui.paletaNota === s.paleta ? null : s.paleta; return render(); }
+  if (s.notacolor) { const n = D().notas.find(x => x.id === s.notacolor); n.color = +s.i; estado.ui.paletaNota = null; render(); return seguro(() => db.actualizar('notas', n.id, { color: n.color })); }
+  if (s.fuente)    { const n = D().notas.find(x => x.id === s.fuente); n.fuente = ((n.fuente | 0) + 1) % FUENTES.length; render(); return seguro(() => db.actualizar('notas', n.id, { fuente: n.fuente })); }
   if (s.modoDibujo){ estado.ui.dibujo = estado.ui.dibujo === s.modoDibujo ? null : s.modoDibujo; return render(); }
   if (s.borrarDibujo) { const n = D().notas.find(x => x.id === s.borrarDibujo); n.trazos = []; render(); return seguro(() => db.actualizar('notas', n.id, { trazos: [] })); }
 
@@ -1133,6 +1427,17 @@ document.addEventListener('input', ev => {
     n.texto = ev.target.value;
     return db.guardarConRetardo('n' + n.id, () => seguro(() => db.actualizar('notas', n.id, { texto: n.texto })));
   }
+  if (s.apunteTexto) {
+    const a = D().apuntes.find(x => x.id === s.apunteTexto);
+    a.texto = ev.target.value;
+    a.actualizado_en = new Date().toISOString();
+    const item = $(`[data-apunte="${a.id}"]`);
+    if (item) {
+      item.querySelector('[data-titulo]').textContent = tituloApunte(a);
+      item.querySelector('[data-adelanto]').textContent = adelantoApunte(a) || 'Sin más texto';
+    }
+    return db.guardarConRetardo('a' + a.id, () => seguro(() => db.actualizar('apuntes', a.id, { texto: a.texto, actualizado_en: a.actualizado_en })));
+  }
   if (s.desc) {
     const p = D().proyectos.find(x => x.id === s.desc);
     p.descripcion = ev.target.value;
@@ -1144,23 +1449,36 @@ document.addEventListener('input', ev => {
     render();
     return seguro(() => db.actualizar('proyectos', p.id, { vence: p.vence }));
   }
-  if (s.perfil) {
-    D().perfil[s.perfil] = num(ev.target.value);
-    const campo = s.perfil, valor = D().perfil[campo];
-    return db.guardarConRetardo('perfil' + campo, () => seguro(async () => {
-      await db.guardarPerfil({ [campo]: valor });
+  if (s.mensual) {
+    const mes = mesDinero(), campo = s.mensual, valor = num(ev.target.value);
+    let fila = D().dinero_mensual.find(x => x.mes === mes);
+    if (!fila) { fila = { mes, dinero_base: 0, meta_ahorro: 0 }; D().dinero_mensual.push(fila); }
+    fila[campo] = valor;
+    return db.guardarConRetardo('mensual' + mes + campo, () => seguro(async () => {
+      // Solo se toma el id: lo tipeado mientras tanto no se pisa.
+      const r = await db.guardarMensual(mes, { [campo]: valor });
+      fila.id = r.id; fila.user_id = r.user_id;
       render();
     }));
   }
 });
 
 document.addEventListener('keydown', async ev => {
+  if (ev.target.dataset?.edicion !== undefined) {
+    if (ev.key === 'Enter') { ev.preventDefault(); guardarEdicion(ev.target); }
+    if (ev.key === 'Escape') { estado.ui.editando = null; render(); }
+    return;
+  }
   if (ev.key !== 'Enter') return;
   const acc = ev.target.dataset?.enter;
   if (!acc) return;
   ev.preventDefault();
   await ACCIONES[acc]();
   render();
+});
+
+document.addEventListener('focusout', ev => {
+  if (ev.target.dataset?.edicion !== undefined) guardarEdicion(ev.target, mouseApretado);
 });
 
 /* ---------- cerrar paneles flotantes al hacer clic afuera ---------- */

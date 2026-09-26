@@ -234,3 +234,7 @@ begin
     end if;
   end loop;
 end $$;
+
+-- Avisa a la API de Supabase que hay tablas nuevas, para que la app las vea
+-- enseguida sin esperar.
+notify pgrst, 'reload schema';

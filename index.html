@@ -109,6 +109,40 @@ main{max-width:1320px;width:100%;margin:0 auto;padding:26px 22px 60px}
 .nota .paleta{position:absolute;left:8px;right:8px;bottom:26px;display:flex;flex-wrap:wrap;gap:5px;padding:7px;border-radius:8px;background:rgba(255,255,255,.85);box-shadow:0 4px 10px rgba(60,60,70,.12);z-index:2}
 .nota .paleta .sw{width:16px;height:16px;padding:0;border-radius:50%;border:1px solid rgba(0,0,0,.10);cursor:pointer}
 
+/* notas de texto */
+.apunte-grilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.apunte-tarjeta{display:flex;flex-direction:column;gap:8px;min-height:150px;text-align:left;cursor:pointer;border:1px solid var(--borde);background:var(--card);color:var(--txt);border-radius:20px;padding:16px 18px;transition:box-shadow .2s,border-color .2s}
+.apunte-tarjeta:hover{border-color:var(--sel-fg);box-shadow:0 10px 22px var(--sombra)}
+.apunte-adelanto{font-size:13px;line-height:1.45;color:var(--txt3);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.apunte-titulo{width:100%;border:none;background:transparent;font-size:26px;font-weight:600;padding:18px 2px 8px;color:var(--txt)}
+.apunte-titulo:focus{outline:none}
+.herramientas{position:sticky;top:64px;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;margin:4px 0 14px;border:1px solid var(--borde);border-radius:16px;background:var(--card)}
+.herr{border:1px solid transparent;background:transparent;color:var(--txt);border-radius:9px;min-width:32px;height:32px;padding:0 8px;font-size:14px;cursor:pointer;white-space:nowrap}
+.herr:hover{background:var(--sutil);border-color:var(--borde)}
+.herr.on{background:var(--sel-bg);color:var(--sel-fg)}
+.herr-sel{height:32px;border:1px solid var(--borde);border-radius:9px;background:var(--sutil);padding:0 8px;font-size:12px;cursor:pointer;max-width:130px}
+.herr-sep{width:1px;height:22px;background:var(--borde);margin:0 4px}
+.herr-grupo{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--txt2)}
+.herr-sw{width:18px;height:18px;padding:0;border-radius:50%;border:1px solid rgba(0,0,0,.14);cursor:pointer}
+.herr-sw:hover{transform:scale(1.15)}
+.hoja{position:relative}
+.apunte-cuerpo{min-height:60vh;outline:none;font-size:15px;line-height:1.65;color:var(--txt);word-wrap:break-word;padding:2px}
+.apunte-cuerpo:empty::before{content:attr(data-placeholder);color:var(--placeholder);pointer-events:none}
+.apunte-cuerpo img{max-width:100%;height:auto;border-radius:10px;vertical-align:bottom;cursor:pointer}
+.apunte-cuerpo img.elegida{outline:3px solid var(--sel-fg);outline-offset:2px}
+.apunte-cuerpo ul,.apunte-cuerpo ol{padding-left:24px}
+.img-barra{position:absolute;z-index:6;display:flex;gap:4px;padding:4px;border:1px solid var(--borde);border-radius:12px;background:var(--card);box-shadow:0 8px 18px var(--sombra)}
+.img-barra button{border:none;background:transparent;color:var(--txt);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer}
+.img-barra button:hover{background:var(--sutil)}
+.pegatina{position:absolute;z-index:4;width:170px;min-height:150px;padding:8px 12px 28px;border-radius:3px;box-shadow:0 6px 14px var(--sombra);transform:rotate(-1deg)}
+.pegatina:nth-child(odd){transform:rotate(1.2deg)}
+.pegatina .asa{height:14px;margin:-4px -6px 4px;cursor:grab;display:flex;justify-content:center;align-items:center;opacity:.35;touch-action:none}
+.pegatina .asa i{width:22px;height:2px;border-radius:2px;background:#7C7C82;display:block}
+.pegatina textarea{width:100%;min-height:104px;border:none;background:transparent;font-family:Caveat,cursive;font-size:20px;line-height:1.25;color:#4A4A4E}
+.pegatina textarea:focus{outline:none}
+.pegatina .pie{position:absolute;left:10px;right:6px;bottom:5px;display:flex;align-items:center}
+.pegatina .pie .sw{width:12px;height:12px;padding:0;border-radius:50%;border:1px solid rgba(0,0,0,.14);cursor:pointer}
+
 /* calendario */
 .grid7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
 .dia{cursor:pointer;text-align:left;min-width:0;overflow:hidden;min-height:88px;padding:9px;border-radius:14px;border:1px solid var(--borde-suave);background:var(--card);display:flex;flex-direction:column;gap:5px}
@@ -147,6 +181,7 @@ main{max-width:1320px;width:100%;margin:0 auto;padding:26px 22px 60px}
   .dos>.izq,.cal>.lateral{flex:1 1 auto;width:100%}
   header .fila{gap:10px}
   #buscador{width:120px}
+  .herramientas{position:static}
 }
 </style>
 </head>

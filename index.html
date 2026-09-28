@@ -88,6 +88,8 @@ nav button.on{background:var(--sel-bg);color:var(--sel-fg)}
 .campana .punto{position:absolute;top:2px;right:2px;background:var(--peligro);color:#FFF;border-radius:999px;font-size:9px;line-height:1;min-width:15px;height:15px;display:flex;align-items:center;justify-content:center;padding:0 3px}
 
 main{max-width:1320px;width:100%;margin:0 auto;padding:26px 22px 60px}
+/* La pestaña Notas usa todo el ancho de la pantalla. */
+main.ancho{max-width:none;padding:20px 28px 40px}
 .dos{display:flex;gap:52px;align-items:flex-start}
 .dos>.izq{flex:0 0 320px}
 .dos>.der{flex:1;min-width:0}
@@ -126,7 +128,8 @@ main{max-width:1320px;width:100%;margin:0 auto;padding:26px 22px 60px}
 .herr-sw{width:18px;height:18px;padding:0;border-radius:50%;border:1px solid rgba(0,0,0,.14);cursor:pointer}
 .herr-sw:hover{transform:scale(1.15)}
 .hoja{position:relative}
-.apunte-cuerpo{min-height:60vh;outline:none;font-size:15px;line-height:1.65;color:var(--txt);word-wrap:break-word;padding:2px}
+.apunte-editor{padding:18px 26px 26px}
+.apunte-cuerpo{min-height:calc(100vh - 330px);outline:none;font-size:15px;line-height:1.65;color:var(--txt);word-wrap:break-word;padding:2px}
 .apunte-cuerpo:empty::before{content:attr(data-placeholder);color:var(--placeholder);pointer-events:none}
 .apunte-cuerpo img{max-width:100%;height:auto;border-radius:10px;vertical-align:bottom;cursor:pointer}
 .apunte-cuerpo img.elegida{outline:3px solid var(--sel-fg);outline-offset:2px}
@@ -182,6 +185,8 @@ main{max-width:1320px;width:100%;margin:0 auto;padding:26px 22px 60px}
   header .fila{gap:10px}
   #buscador{width:120px}
   .herramientas{position:static}
+  main.ancho{padding:12px 8px 30px}
+  .apunte-editor{padding:14px 12px 20px;border-radius:18px}
 }
 </style>
 </head>

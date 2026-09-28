@@ -345,7 +345,7 @@ function render() {
         <input type="file" id="importFile" accept="application/json" style="display:none">
       </div>
     </div></header>
-    <main>${vistas[u.pestana]()}</main>`;
+    <main class="${u.pestana === 'apuntes' ? 'ancho' : ''}">${vistas[u.pestana]()}</main>`;
 
   if (foco) {
     const el = $(`[data-f="${foco}"]`);
@@ -1246,7 +1246,7 @@ function vApuntes() {
   // Al entrar se ven todas las notas; ninguna se abre sola.
   if (!sel) {
     const lista = [...d.apuntes].sort((a, x) => String(x.actualizado_en).localeCompare(String(a.actualizado_en)));
-    return `<section style="max-width:1100px;margin:0 auto">
+    return `<section>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
         <div style="margin-right:auto">
           <div style="font-size:24px;font-weight:500">Notas</div>
@@ -1262,7 +1262,7 @@ function vApuntes() {
   const pegs = sel.pegatinas || [];
   const alto = Math.max(0, ...pegs.map(p => (p.y | 0) + 200));
   const editada = fechaApunte(sel) ? 'Editada ' + (kf(new Date(sel.actualizado_en || sel.creado_en)) === kf(u.ahora) ? 'hoy a las ' : 'el ') + fechaApunte(sel) : '';
-  return `<section class="tarjeta" style="max-width:1100px;margin:0 auto;padding:18px 22px 26px">
+  return `<section class="tarjeta apunte-editor">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="pill" data-acc="cerrarApunte">‹ Notas</button>
       <div style="font-size:12px;color:var(--txt4);margin-right:auto">${editada} · <span data-estado-guardado>Guardado</span></div>
@@ -1271,7 +1271,7 @@ function vApuntes() {
     </div>
     <input class="apunte-titulo" data-f="apunte-titulo" data-apunte-titulo="${sel.id}" placeholder="Título" value="${esc(sel.titulo || '')}" maxlength="200">
     ${herramientasApunte()}
-    <div class="hoja" data-hoja="${sel.id}" style="min-height:max(60vh, ${alto}px)">
+    <div class="hoja" data-hoja="${sel.id}" style="min-height:max(calc(100vh - 330px), ${alto}px)">
       <div class="apunte-cuerpo" contenteditable="true" spellcheck="true" data-f="apunte-cuerpo" data-apunte-cuerpo="${sel.id}" data-placeholder="Escribí tu nota…">${contenidoApunte(sel)}</div>
       ${pegs.map(pegatina).join('')}
     </div>
@@ -1426,7 +1426,7 @@ function arrastrarPegatina(ev, id) {
     p.y = Math.round(Math.max(0, e.clientY - oy));
     el.style.left = p.x + 'px';
     el.style.top = p.y + 'px';
-    hoja.style.minHeight = `max(60vh, ${p.y + 200}px)`;
+    hoja.style.minHeight = `max(calc(100vh - 330px), ${p.y + 200}px)`;
   };
   const fin = () => {
     removeEventListener('pointermove', mover); removeEventListener('pointerup', fin);

@@ -200,9 +200,12 @@ where mes is null;
 create index if not exists fijos_user_mes on gastos_fijos (user_id, mes);
 
 -- ---------------------------------------------------------------
--- Notas de texto (pestaña "Notas"): texto libre y largo, como la app de
--- notas del celular. La primera línea hace de título. Son distintas de
--- las notas adhesivas del Inicio (tabla "notas").
+-- Notas de texto (pestaña "Notas"): texto libre y largo, con título,
+-- formato (tipografías, negrita, subrayado, resaltado), imágenes y
+-- pegatinas. Son distintas de las notas adhesivas del Inicio (tabla "notas").
+--   texto:     versión en texto plano (para buscar y para el adelanto)
+--   contenido: el texto con formato, en HTML (las imágenes van incluidas)
+--   pegatinas: [{ id, x, y, texto, color }] en píxeles dentro de la hoja
 -- ---------------------------------------------------------------
 create table if not exists apuntes (
   id uuid primary key default gen_random_uuid(),
@@ -212,6 +215,9 @@ create table if not exists apuntes (
   actualizado_en timestamptz default now()
 );
 create index if not exists apuntes_user on apuntes (user_id, actualizado_en desc);
+alter table apuntes add column if not exists titulo text default '';
+alter table apuntes add column if not exists contenido text;
+alter table apuntes add column if not exists pegatinas jsonb default '[]'::jsonb;
 
 -- ---------------------------------------------------------------
 -- Seguridad: cada persona solo ve y toca SUS filas.

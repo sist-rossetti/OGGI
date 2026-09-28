@@ -114,10 +114,10 @@ Para ver los datos con tus propios ojos: Supabase → **Table Editor**.
 
 - **Dinero por mes**: flechas ‹ › para moverse entre meses. Cada mes tiene su propio dinero base, meta de ahorro, gastos fijos, gastos variables, ingresos y ahorros; los meses anteriores quedan como estaban. Un mes nuevo arranca vacío (con un botón opcional para copiar los gastos fijos del mes anterior).
 - **Hábitos por mes**: además de la semana, una vista "Mes" con todos los días y cuántos cumpliste.
-- **Notas de texto**: pestaña "Notas", como la app de notas del celular. La primera línea es el título, se guarda sola mientras escribís y el buscador de arriba también busca adentro. (Son distintas de las notas adhesivas del Inicio.)
+- **Notas de texto**: pestaña "Notas". Al entrar ves todas tus notas en una lista; tocá una para abrirla. Cada nota tiene título y una barra de herramientas con tipografía, tamaño, grosor, negrita, cursiva, subrayado, tachado, listas, resaltador de colores y color de letra. También podés agregar pegatinas (se arrastran a cualquier parte de la hoja) e imágenes (con el botón, pegándolas o arrastrándolas; al tocar una imagen podés cambiarle el tamaño). Se guarda sola mientras escribís y al salir, y además tiene un botón **Guardar** (o Ctrl+S). El buscador de arriba también busca adentro. (Son distintas de las notas adhesivas del Inicio.)
 - **Editar lo ya guardado**: un clic sobre el nombre (o el monto) de una tarea, proyecto, paso, hábito, evento o gasto lo vuelve editable. Enter guarda, Escape cancela.
 
-> **Si ya tenías OGGI andando antes de esto:** volvé a correr el `esquema.sql` completo en Supabase (SQL Editor → Run). Es seguro correrlo de nuevo: no borra nada. Crea las tablas del dinero por mes y de las notas de texto, pasa tu dinero base y tu meta a septiembre 2026, y deja cada gasto fijo en el mes en que lo creaste.
+> **Si ya tenías OGGI andando antes de esto:** volvé a correr el `esquema.sql` completo en Supabase (SQL Editor → Run). Es seguro correrlo de nuevo: no borra nada. Crea las tablas del dinero por mes y de las notas de texto (con título, formato, pegatinas e imágenes), pasa tu dinero base y tu meta a septiembre 2026, y deja cada gasto fijo en el mes en que lo creaste.
 
 ## Lo que todavía no está
 

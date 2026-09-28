@@ -119,6 +119,11 @@ export async function traerTodo() {
     }
     out[t] = data || [];
   }));
+  // Columnas agregadas después a "apuntes" (título, formato, pegatinas).
+  if (!out.faltan?.includes('apuntes')) {
+    const { error } = await sb.from('apuntes').select('titulo,contenido,pegatinas').limit(1);
+    if (error) (out.faltan ||= []).push('apuntes_formato');
+  }
   out.perfil = await leerPerfil();
   return out;
 }
@@ -213,8 +218,23 @@ export async function borrarTodoMisDatos() {
 
 const pendientes = new Map();
 export function guardarConRetardo(clave, fn, ms = 600) {
-  clearTimeout(pendientes.get(clave));
-  pendientes.set(clave, setTimeout(() => { pendientes.delete(clave); fn(); }, ms));
+  clearTimeout(pendientes.get(clave)?.t);
+  pendientes.set(clave, { fn, t: setTimeout(() => { pendientes.delete(clave); fn(); }, ms) });
+}
+
+// Guarda en el momento lo que estaba esperando su turno. Devuelve null si
+// no había nada pendiente con esa clave.
+export function guardarYa(clave) {
+  const p = pendientes.get(clave);
+  if (!p) return null;
+  clearTimeout(p.t);
+  pendientes.delete(clave);
+  return p.fn();
+}
+
+// Al salir de la página (o dejarla en segundo plano) no se espera el retardo.
+export function guardarTodoYa() {
+  return Promise.all([...pendientes.keys()].map(guardarYa));
 }
 
 /* ---------- aviso de sin conexión + reintento ----------

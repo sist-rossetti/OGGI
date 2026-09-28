@@ -345,7 +345,7 @@ function render() {
         <input type="file" id="importFile" accept="application/json" style="display:none">
       </div>
     </div></header>
-    <main>${vistas[u.pestana]()}</main>`;
+    <main class="${u.pestana === 'apuntes' ? 'ancho' : ''}">${vistas[u.pestana]()}</main>`;
 
   if (foco) {
     const el = $(`[data-f="${foco}"]`);
@@ -410,7 +410,7 @@ function buscar() {
   d.habitos.filter(h => hit(h.nombre)).forEach(h => r.push([h.nombre, 'Hábito', pal(h.color).bar, { pestana: 'habitos' }]));
   d.gastos_fijos.filter(g => hit(g.nombre)).forEach(g => r.push([g.nombre, 'Gasto fijo', pal(g.color).bar, { pestana: 'dinero' }]));
   d.gastos_variables.filter(g => hit(g.nombre)).forEach(g => r.push([g.nombre, 'Gasto · ' + g.categoria, '#EFBCC4', { pestana: 'dinero' }]));
-  d.apuntes.filter(a => hit(a.texto)).forEach(a => r.push([tituloApunte(a), 'Nota de texto', '#C3B4E6', { pestana: 'apuntes', apunte: a.id }]));
+  d.apuntes.filter(a => hit(a.titulo) || hit(a.texto)).forEach(a => r.push([tituloApunte(a), 'Nota de texto', '#C3B4E6', { pestana: 'apuntes', apunte: a.id }]));
   d.ingresos.filter(i => hit(i.origen) || hit(i.detalle)).forEach(i => r.push([i.origen, 'Ingreso', '#B4DCBC', { pestana: 'dinero' }]));
 
   return `<div id="resultados">${r.length ? r.map(([t, m, c, ir]) => `
@@ -1094,67 +1094,434 @@ function vDinero() {
 /* ------------------------------------------------------------------ */
 /* NOTAS DE TEXTO (tabla "apuntes")                                    */
 /* ------------------------------------------------------------------ */
-// Como en la app de notas del celular: la primera línea es el título y
-// lo que sigue se ve como adelanto en la lista.
+// Cada nota tiene título, texto con formato (HTML en "contenido", con las
+// imágenes incluidas) y pegatinas sueltas encima de la hoja. "texto" guarda
+// la versión en texto plano, para el buscador y el adelanto de la lista.
+// Las notas viejas no tienen título: se usa su primera línea.
 const lineasApunte = a => String(a.texto || '').split('\n').map(l => l.trim()).filter(Boolean);
-const tituloApunte = a => (lineasApunte(a)[0] || 'Nota nueva').slice(0, 80);
-const adelantoApunte = a => lineasApunte(a).slice(1).join(' ').slice(0, 90);
+const tituloApunte = a => (String(a.titulo || '').trim() || lineasApunte(a)[0] || 'Sin título').slice(0, 80);
+const adelantoApunte = a => lineasApunte(a).slice(String(a.titulo || '').trim() ? 0 : 1).join(' ').slice(0, 140);
+const imagenesApunte = a => (String(a.contenido || '').match(/<img\b/gi) || []).length;
 function fechaApunte(a) {
   const d = new Date(a.actualizado_en || a.creado_en);
   if (isNaN(d)) return '';
   if (kf(d) === kf(estado.ui.ahora)) return pad(d.getHours()) + ':' + pad(d.getMinutes());
   return d.getDate() + ' ' + MES3[d.getMonth()] + (d.getFullYear() !== estado.ui.ahora.getFullYear() ? ' ' + d.getFullYear() : '');
 }
-// Una nota que se deja vacía se descarta sola, como en el celular.
-function descartarApunteVacio(salvo) {
-  const a = D().apuntes.find(x => x.id === estado.ui.apunte);
-  if (!a || a.id === salvo || String(a.texto || '').trim()) return;
-  quitar('apuntes', a.id);
-  seguro(() => db.borrar('apuntes', a.id));
+const apunteVacio = a => !String(a.titulo || '').trim() && !String(a.texto || '').trim() && !imagenesApunte(a) && !(a.pegatinas || []).length;
+
+// Herramientas del editor.
+const PESOS = [['300', 'Fina'], ['400', 'Normal'], ['500', 'Media'], ['600', 'Semi'], ['700', 'Negrita']];
+const TAMANOS = ['12', '14', '16', '18', '22', '28', '36'];
+const RESALTADOS = [['#FFF3A3', 'Amarillo'], ['#FFD1DC', 'Rosa'], ['#CDE7FF', 'Celeste'], ['#CFF2D6', 'Verde'], ['#E4D7FF', 'Lila'], ['#FFDDBF', 'Durazno']];
+const COLORES_LETRA = [['#3B3B3F', 'Gris oscuro'], ['#C0504D', 'Rojo'], ['#3A6FB0', 'Azul'], ['#3F8A5A', 'Verde'], ['#8A5AB5', 'Violeta'], ['#C07A2C', 'Naranja']];
+const PEG_W = 170;
+
+/* ---------- limpiar el HTML antes de mostrarlo o guardarlo ----------
+   El contenido se muestra con innerHTML, así que solo pasan etiquetas y
+   estilos de formato; nada de scripts, eventos ni enlaces a otros sitios. */
+const TAGS_OK = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SPAN', 'FONT', 'DIV', 'P', 'BR', 'IMG', 'MARK', 'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'BLOCKQUOTE', 'HR']);
+const TAGS_FUERA = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'LINK', 'META', 'TITLE', 'NOSCRIPT', 'TEMPLATE', 'svg', 'math', 'SELECT', 'TEXTAREA', 'BUTTON']);
+const CSS_OK = ['font-family', 'font-size', 'font-weight', 'font-style', 'text-decoration', 'text-decoration-line', 'color', 'background-color', 'text-align', 'width'];
+function limpiarHTML(html) {
+  const t = document.createElement('template');
+  t.innerHTML = html || '';
+  const pasar = padre => [...padre.childNodes].forEach(n => {
+    if (n.nodeType === 3) return;
+    if (n.nodeType !== 1 || TAGS_FUERA.has(n.tagName)) return n.remove();
+    pasar(n);
+    if (!TAGS_OK.has(n.tagName)) return n.replaceWith(...n.childNodes);
+    if (n.tagName === 'IMG' && !/^data:image\/(png|jpe?g|gif|webp);base64,[\w+/=]+$/.test(n.getAttribute('src') || '')) return n.remove();
+    const css = CSS_OK.map(p => [p, n.style.getPropertyValue(p)]).filter(([, v]) => v && !/url\(|expression|javascript/i.test(v));
+    [...n.attributes].forEach(at => {
+      const ok = (n.tagName === 'IMG' && at.name === 'src')
+        || (n.tagName === 'FONT' && ((at.name === 'face' && /^[\w\s',-]+$/.test(at.value)) || (at.name === 'color' && /^#?\w+$/.test(at.value)) || (at.name === 'size' && /^[1-7]$/.test(at.value))));
+      if (!ok) n.removeAttribute(at.name);
+    });
+    if (css.length) n.setAttribute('style', css.map(([p, v]) => p + ':' + v).join(';'));
+  });
+  pasar(t.content);
+  return t.innerHTML;
 }
-function itemApunte(a, sel) {
-  return `<button data-apunte="${a.id}" style="width:100%;text-align:left;border:none;cursor:pointer;border-radius:14px;padding:12px 14px;background:${sel ? 'var(--sel-bg)' : 'transparent'};color:var(--txt)">
-    <span data-titulo style="display:block;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(tituloApunte(a))}</span>
-    <span style="display:flex;gap:8px;font-size:12px;color:var(--txt4);margin-top:3px">
-      <span style="flex:0 0 auto">${fechaApunte(a)}</span>
-      <span data-adelanto style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(adelantoApunte(a)) || 'Sin más texto'}</span>
+const contenidoApunte = a => a.contenido != null ? limpiarHTML(a.contenido) : esc(a.texto).replace(/\n/g, '<br>');
+
+/* ---------- guardado ---------- */
+// Se guarda solo (poco después de dejar de escribir), al salir de la nota,
+// al cambiar de pestaña o de ventana, y cuando se toca "Guardar".
+function ponerEstadoGuardado(txt) {
+  const el = $('[data-estado-guardado]');
+  if (el) el.textContent = txt;
+}
+async function escribirApunte(a) {
+  ponerEstadoGuardado('Guardando…');
+  try {
+    await db.actualizar('apuntes', a.id, {
+      titulo: a.titulo || '', texto: a.texto || '', contenido: limpiarHTML(a.contenido || ''),
+      pegatinas: a.pegatinas || [], actualizado_en: a.actualizado_en
+    });
+    ponerEstadoGuardado('Guardado');
+    return true;
+  } catch (e) {
+    console.error(e);
+    ponerEstadoGuardado('Sin guardar');
+    aviso('No se pudo guardar: ' + (e.message || 'error de conexión'));
+    return false;
+  }
+}
+function cambioApunte(a) {
+  a.actualizado_en = new Date().toISOString();
+  ponerEstadoGuardado('Cambios sin guardar');
+  db.guardarConRetardo('a' + a.id, () => escribirApunte(a), 900);
+}
+const guardarApunteYa = a => db.guardarYa('a' + a.id) || escribirApunte(a);
+
+// Una nota que se deja vacía se descarta sola; si no, se guarda al salir.
+function salirDeApunte(salvo) {
+  const a = D().apuntes.find(x => x.id === estado.ui.apunte);
+  if (!a || a.id === salvo) return;
+  if (apunteVacio(a)) { quitar('apuntes', a.id); seguro(() => db.borrar('apuntes', a.id)); }
+  else db.guardarYa('a' + a.id);
+}
+addEventListener('pagehide', () => db.guardarTodoYa());
+document.addEventListener('visibilitychange', () => { if (document.hidden) db.guardarTodoYa(); });
+
+/* ---------- vista ---------- */
+function tarjetaApunte(a) {
+  const imgs = imagenesApunte(a), pegs = (a.pegatinas || []).length;
+  return `<button data-apunte="${a.id}" class="apunte-tarjeta">
+    <span style="display:block;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(tituloApunte(a))}</span>
+    <span class="apunte-adelanto">${esc(adelantoApunte(a)) || '<i style="color:var(--txt5)">Sin más texto</i>'}</span>
+    <span style="display:flex;gap:10px;align-items:center;font-size:11px;color:var(--txt4);margin-top:auto">
+      <span style="margin-right:auto">${fechaApunte(a)}</span>
+      ${imgs ? `<span title="Imágenes">🖼 ${imgs}</span>` : ''}
+      ${pegs ? `<span title="Pegatinas">🗒 ${pegs}</span>` : ''}
     </span>
   </button>`;
 }
 
+function pegatina(p) {
+  return `<div class="pegatina pastel" data-peg="${p.id}" style="left:min(${p.x | 0}px, calc(100% - ${PEG_W}px));top:${p.y | 0}px;background:${palNota(p.color).bg}">
+    <div class="asa" data-peg-asa="${p.id}" title="Arrastrar"><i></i></div>
+    <textarea data-f="peg-${p.id}" data-peg-texto="${p.id}" placeholder="Escribí acá…">${esc(p.texto)}</textarea>
+    <div class="pie">
+      <button class="sw" data-peg-color="${p.id}" title="Cambiar color" style="background:${palNota((p.color | 0) + 1).bg}"></button>
+      <button class="icono" data-peg-borrar="${p.id}" title="Quitar pegatina" style="margin-left:auto;font-size:14px;color:var(--txt3)">×</button>
+    </div>
+  </div>`;
+}
+
+function herramientasApunte() {
+  const sel = (fmt, titulo, ops) => `<select class="herr-sel" data-fmt-sel="${fmt}" title="${titulo}"><option value="">${titulo}</option>${ops}</select>`;
+  const btn = (fmt, titulo, txt, extra = '') => `<button class="herr" data-fmt="${fmt}" title="${titulo}" ${extra}>${txt}</button>`;
+  const muestras = (fmt, lista) => lista.map(([c, n]) => `<button class="herr-sw" data-fmt="${fmt}" data-v="${c}" title="${n}" style="background:${c}"></button>`).join('');
+  return `<div class="herramientas">
+    ${sel('fontName', 'Tipografía', FUENTES.map(f => `<option value="${esc(f.f)}" style="font-family:${esc(f.f)}">${f.n}</option>`).join(''))}
+    ${sel('fontSize', 'Tamaño', TAMANOS.map(t => `<option value="${t}px">${t}</option>`).join(''))}
+    ${sel('fontWeight', 'Grosor', PESOS.map(([v, n]) => `<option value="${v}" style="font-weight:${v}">${n}</option>`).join(''))}
+    <span class="herr-sep"></span>
+    ${btn('bold', 'Negrita (Ctrl+B)', '<b>B</b>')}
+    ${btn('italic', 'Cursiva (Ctrl+I)', '<i>I</i>')}
+    ${btn('underline', 'Subrayado (Ctrl+U)', '<u>S</u>')}
+    ${btn('strikeThrough', 'Tachado', '<s>T</s>')}
+    ${btn('insertUnorderedList', 'Lista', '•≡')}
+    <span class="herr-sep"></span>
+    <span class="herr-grupo" title="Resaltar">🖍 ${muestras('hiliteColor', RESALTADOS)}${btn('hiliteColor', 'Quitar resaltado', '⌀', 'data-v="transparent"')}</span>
+    <span class="herr-grupo" title="Color de letra">A ${muestras('foreColor', COLORES_LETRA)}</span>
+    <span class="herr-sep"></span>
+    ${btn('pegatina', 'Agregar una pegatina', '🗒 Pegatina')}
+    ${btn('imagen', 'Agregar una imagen', '🖼 Imagen')}
+    <input type="file" accept="image/*" multiple data-imagen-input style="display:none">
+  </div>`;
+}
+
 function vApuntes() {
   const d = D(), u = estado.ui;
-  if (d.faltan?.includes('apuntes')) {
-    return `<div class="tarjeta pastel" style="max-width:760px;margin:0 auto;padding:18px 22px;background:#FBE2CE;font-size:13px;line-height:1.5">Para usar las notas de texto falta correr el <b>esquema.sql</b> actualizado en Supabase (SQL Editor → Run). Es seguro correrlo de nuevo: no borra nada.</div>`;
+  const falta = d.faltan?.includes('apuntes') ? 'Para usar las notas de texto' : d.faltan?.includes('apuntes_formato') ? 'Para usar títulos, formato, pegatinas e imágenes en las notas' : '';
+  if (falta) {
+    return `<div class="tarjeta pastel" style="max-width:760px;margin:0 auto;padding:18px 22px;background:#FBE2CE;font-size:13px;line-height:1.5">${falta} falta correr el <b>esquema.sql</b> actualizado en Supabase (SQL Editor → Run). Es seguro correrlo de nuevo: no borra nada.</div>`;
   }
-  const lista = [...d.apuntes].sort((a, x) => String(x.actualizado_en).localeCompare(String(a.actualizado_en)));
   const sel = d.apuntes.find(a => a.id === u.apunte);
   if (!sel) u.apunte = null;
-  const angosto = innerWidth < 900;
 
-  const columnaLista = `<section class="tarjeta" style="flex:0 0 ${angosto ? 'auto' : '300px'};padding:16px;display:flex;flex-direction:column;gap:12px;max-height:${angosto ? 'none' : '76vh'}">
-    <div style="display:flex;align-items:center;gap:10px;padding:4px 6px 0">
-      <div style="font-size:22px;font-weight:500;margin-right:auto">Notas</div>
-      <button class="primario" style="border-radius:999px;padding:8px 16px;font-size:13px" data-acc="nuevoApunte">+ Nueva</button>
-    </div>
-    <div style="font-size:12px;color:var(--txt4);padding:0 6px">${lista.length} ${lista.length === 1 ? 'nota' : 'notas'}</div>
-    <div style="display:flex;flex-direction:column;gap:2px;overflow-y:auto">
-      ${lista.length ? lista.map(a => itemApunte(a, a.id === u.apunte)).join('') : '<div style="padding:14px 6px;font-size:13px;color:var(--txt4);line-height:1.5">Todavía no hay notas. Tocá "+ Nueva" para escribir la primera.</div>'}
-    </div>
-  </section>`;
+  // Al entrar se ven todas las notas; ninguna se abre sola.
+  if (!sel) {
+    const lista = [...d.apuntes].sort((a, x) => String(x.actualizado_en).localeCompare(String(a.actualizado_en)));
+    return `<section>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+        <div style="margin-right:auto">
+          <div style="font-size:24px;font-weight:500">Notas</div>
+          <div style="font-size:12px;color:var(--txt4);margin-top:2px">${lista.length} ${lista.length === 1 ? 'nota' : 'notas'}</div>
+        </div>
+        <button class="primario" style="border-radius:999px;padding:10px 20px;font-size:13px" data-acc="nuevoApunte">+ Nueva nota</button>
+      </div>
+      ${lista.length ? `<div class="apunte-grilla">${lista.map(tarjetaApunte).join('')}</div>`
+        : '<div class="tarjeta" style="padding:30px;text-align:center;font-size:13px;color:var(--txt4);line-height:1.5">Todavía no hay notas. Tocá "+ Nueva nota" para escribir la primera.</div>'}
+    </section>`;
+  }
 
-  const editor = sel ? `<section class="tarjeta" style="flex:1;min-width:0;padding:22px 26px;display:flex;flex-direction:column;gap:10px">
-    <div style="display:flex;align-items:center;gap:10px">
-      ${angosto ? `<button class="pill" data-acc="cerrarApunte">‹ Notas</button>` : ''}
-      <div style="font-size:12px;color:var(--txt4);margin-right:auto">${fechaApunte(sel) ? 'Editada ' + (kf(new Date(sel.actualizado_en || sel.creado_en)) === kf(u.ahora) ? 'hoy a las ' : 'el ') + fechaApunte(sel) : ''}</div>
+  const pegs = sel.pegatinas || [];
+  const alto = Math.max(0, ...pegs.map(p => (p.y | 0) + 200));
+  const editada = fechaApunte(sel) ? 'Editada ' + (kf(new Date(sel.actualizado_en || sel.creado_en)) === kf(u.ahora) ? 'hoy a las ' : 'el ') + fechaApunte(sel) : '';
+  return `<section class="tarjeta apunte-editor">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button class="pill" data-acc="cerrarApunte">‹ Notas</button>
+      <div style="font-size:12px;color:var(--txt4);margin-right:auto">${editada} · <span data-estado-guardado>Guardado</span></div>
+      <button class="primario" style="border-radius:999px;padding:8px 18px;font-size:13px" data-acc="guardarApunte" title="Guardar (Ctrl+S)">Guardar</button>
       <button class="pill" style="color:var(--peligro)" data-acc="borrarApunte">Eliminar</button>
     </div>
-    <textarea data-f="apunte-${sel.id}" data-apunte-texto="${sel.id}" placeholder="Escribí tu nota… La primera línea es el título." style="flex:1;width:100%;min-height:60vh;border:none;outline:none;background:transparent;font-size:15px;line-height:1.65;color:var(--txt)">${esc(sel.texto)}</textarea>
-  </section>` : `<section class="tarjeta" style="flex:1;min-width:0;padding:22px;display:flex;align-items:center;justify-content:center;min-height:40vh;color:var(--txt4);font-size:13px">Elegí una nota de la lista o creá una nueva.</section>`;
-
-  if (angosto) return `<div>${sel ? editor : columnaLista}</div>`;
-  return `<div style="display:flex;gap:20px;align-items:stretch">${columnaLista}${editor}</div>`;
+    <input class="apunte-titulo" data-f="apunte-titulo" data-apunte-titulo="${sel.id}" placeholder="Título" value="${esc(sel.titulo || '')}" maxlength="200">
+    ${herramientasApunte()}
+    <div class="hoja" data-hoja="${sel.id}" style="min-height:max(calc(100vh - 330px), ${alto}px)">
+      <div class="apunte-cuerpo" contenteditable="true" spellcheck="true" data-f="apunte-cuerpo" data-apunte-cuerpo="${sel.id}" data-placeholder="Escribí tu nota…">${contenidoApunte(sel)}</div>
+      ${pegs.map(pegatina).join('')}
+    </div>
+  </section>`;
 }
+
+/* ---------- editor: formato ---------- */
+// El foco se va a los selectores al elegir tipografía o tamaño, así que se
+// recuerda la última selección dentro del texto para aplicarle el formato.
+let rangoApunte = null;
+const cuerpoApunte = () => $('[data-apunte-cuerpo]');
+const apunteAbierto = () => D()?.apuntes.find(x => x.id === estado.ui.apunte);
+document.addEventListener('selectionchange', () => {
+  const c = cuerpoApunte(), s = getSelection();
+  if (!c || !s.rangeCount) return;
+  const r = s.getRangeAt(0);
+  if (!c.contains(r.commonAncestorContainer)) return;
+  rangoApunte = r.cloneRange();
+  document.querySelectorAll('.herr[data-fmt]').forEach(b => {
+    let on = false;
+    try { on = ['bold', 'italic', 'underline', 'strikeThrough', 'insertUnorderedList'].includes(b.dataset.fmt) && document.queryCommandState(b.dataset.fmt); } catch (e) {}
+    b.classList.toggle('on', on);
+  });
+});
+function volverAlTexto() {
+  const c = cuerpoApunte();
+  if (!c) return null;
+  c.focus();
+  const s = getSelection();
+  s.removeAllRanges();
+  if (rangoApunte && c.contains(rangoApunte.commonAncestorContainer)) s.addRange(rangoApunte);
+  else { const r = document.createRange(); r.selectNodeContents(c); r.collapse(false); s.addRange(r); }
+  return c;
+}
+function alEditarCuerpo(c) {
+  const a = D().apuntes.find(x => x.id === c.dataset.apunteCuerpo);
+  if (!a) return;
+  if (!c.innerText.trim() && !c.querySelector('img')) c.innerHTML = '';
+  a.contenido = c.innerHTML;
+  a.texto = c.innerText.replace(/\n{3,}/g, '\n\n').trim();
+  cambioApunte(a);
+}
+// Grosor y tamaño con valores exactos: execCommand no los trae, así que se
+// marca la selección con una tipografía ficticia y se cambia esa marca por
+// el estilo pedido (la tipografía real se sigue heredando).
+function aplicarEstilo(c, prop, valor) {
+  const s = getSelection();
+  if (s.isCollapsed) {
+    const sp = document.createElement('span');
+    sp.style.setProperty(prop, valor);
+    sp.textContent = '​';
+    s.getRangeAt(0).insertNode(sp);
+    const r = document.createRange();
+    r.setStart(sp.firstChild, 1); r.collapse(true);
+    s.removeAllRanges(); s.addRange(r);
+    return;
+  }
+  document.execCommand('fontName', false, 'oggimarca');
+  c.querySelectorAll('font, span').forEach(el => {
+    const marca = el.tagName === 'FONT' ? el.getAttribute('face') === 'oggimarca' : el.style.fontFamily.replace(/["']/g, '') === 'oggimarca';
+    if (!marca) return;
+    el.removeAttribute('face');
+    el.style.fontFamily = '';
+    el.querySelectorAll('*').forEach(h => h.style?.removeProperty(prop));
+    el.style.setProperty(prop, valor);
+  });
+}
+function formatear(fmt, valor) {
+  const c = volverAlTexto();
+  if (!c) return;
+  document.execCommand('styleWithCSS', false, true);
+  if (fmt === 'fontSize') aplicarEstilo(c, 'font-size', valor);
+  else if (fmt === 'fontWeight') aplicarEstilo(c, 'font-weight', valor);
+  else document.execCommand(fmt, false, valor ?? null);
+  alEditarCuerpo(c);
+}
+
+/* ---------- editor: imágenes ---------- */
+// Se achican y se guardan dentro de la nota (no hace falta configurar nada más).
+function comprimirImagen(file) {
+  return new Promise((ok, mal) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 1400 / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      const g = cv.getContext('2d');
+      g.fillStyle = '#FFFFFF'; g.fillRect(0, 0, cv.width, cv.height);
+      g.drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      ok(cv.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); mal(new Error('No se pudo leer la imagen.')); };
+    img.src = url;
+  });
+}
+async function insertarImagenes(files) {
+  const imgs = [...files].filter(f => f.type.startsWith('image/'));
+  if (!imgs.length) return;
+  for (const f of imgs) {
+    try {
+      const src = await comprimirImagen(f);
+      const c = volverAlTexto();
+      if (!c) return;
+      document.execCommand('insertHTML', false, `<img src="${src}" alt=""><br>`);
+      alEditarCuerpo(c);
+    } catch (e) { aviso(e.message); }
+  }
+}
+// Al tocar una imagen aparece una barrita para cambiarle el tamaño o quitarla.
+let imagenElegida = null;
+function elegirImagen(img) {
+  $('.img-barra')?.remove();
+  document.querySelectorAll('.apunte-cuerpo img.elegida').forEach(i => i.classList.remove('elegida'));
+  imagenElegida = img;
+  if (!img) return;
+  img.classList.add('elegida');
+  const hoja = img.closest('.hoja');
+  const barra = document.createElement('div');
+  barra.className = 'img-barra';
+  barra.innerHTML = [['33', 'Chica'], ['50', 'Mediana'], ['100', 'Grande']].map(([v, n]) => `<button data-img-ancho="${v}">${n}</button>`).join('') + '<button data-img-quitar style="color:var(--peligro)">Quitar</button>';
+  const ci = img.getBoundingClientRect(), ch = hoja.getBoundingClientRect();
+  barra.style.left = Math.max(0, ci.left - ch.left) + 'px';
+  barra.style.top = Math.max(0, ci.top - ch.top - 40) + 'px';
+  hoja.appendChild(barra);
+}
+
+/* ---------- editor: pegatinas ---------- */
+function nuevaPegatina(a) {
+  const hoja = $('[data-hoja]');
+  const h = hoja.getBoundingClientRect();
+  // Aparece en la parte de la hoja que se está viendo, con un leve corrimiento.
+  const n = (a.pegatinas || []).length;
+  const x = Math.max(0, Math.min(hoja.clientWidth - PEG_W - 4, hoja.clientWidth - PEG_W - 24 - (n % 4) * 26));
+  const y = Math.max(0, Math.min(-h.top + 140, hoja.scrollHeight) + (n % 4) * 26);
+  a.pegatinas = [...(a.pegatinas || []), { id: crypto.randomUUID(), x, y, texto: '', color: n % PAL_NOTAS.length }];
+  cambioApunte(a);
+  render();
+  setTimeout(() => $(`[data-peg-texto="${a.pegatinas.at(-1).id}"]`)?.focus());
+}
+function arrastrarPegatina(ev, id) {
+  ev.preventDefault();
+  const a = apunteAbierto(), p = a?.pegatinas.find(x => x.id === id);
+  if (!p) return;
+  const el = $(`[data-peg="${id}"]`), hoja = $('[data-hoja]');
+  const ox = ev.clientX - el.offsetLeft, oy = ev.clientY - el.offsetTop;
+  // La última movida queda arriba de las demás.
+  a.pegatinas = [...a.pegatinas.filter(x => x !== p), p];
+  hoja.appendChild(el);
+  const mover = e => {
+    p.x = Math.round(Math.max(0, Math.min(hoja.clientWidth - PEG_W - 4, e.clientX - ox)));
+    p.y = Math.round(Math.max(0, e.clientY - oy));
+    el.style.left = p.x + 'px';
+    el.style.top = p.y + 'px';
+    hoja.style.minHeight = `max(calc(100vh - 330px), ${p.y + 200}px)`;
+  };
+  const fin = () => {
+    removeEventListener('pointermove', mover); removeEventListener('pointerup', fin);
+    cambioApunte(a);
+  };
+  addEventListener('pointermove', mover); addEventListener('pointerup', fin);
+}
+
+/* ---------- editor: eventos ---------- */
+// Los botones de formato actúan en pointerdown y cancelan el evento, así el
+// texto seleccionado no pierde la selección.
+document.addEventListener('pointerdown', ev => {
+  if (!estado.datos || estado.ui.pestana !== 'apuntes') return;
+  const t = ev.target;
+  const f = t.closest('[data-fmt]');
+  if (f) {
+    ev.preventDefault();
+    const a = apunteAbierto();
+    if (f.dataset.fmt === 'pegatina') return a && nuevaPegatina(a);
+    if (f.dataset.fmt === 'imagen') return $('[data-imagen-input]')?.click();
+    return formatear(f.dataset.fmt, f.dataset.v);
+  }
+  const ancho = t.closest('[data-img-ancho],[data-img-quitar]');
+  if (ancho && imagenElegida) {
+    ev.preventDefault();
+    const c = cuerpoApunte();
+    if (ancho.dataset.imgAncho) imagenElegida.style.width = ancho.dataset.imgAncho + '%';
+    else imagenElegida.remove();
+    elegirImagen(ancho.dataset.imgAncho ? imagenElegida : null);
+    return alEditarCuerpo(c);
+  }
+  const asa = t.closest('[data-peg-asa]');
+  if (asa) return arrastrarPegatina(ev, asa.dataset.pegAsa);
+  elegirImagen(t.tagName === 'IMG' && t.closest('[data-apunte-cuerpo]') ? t : null);
+});
+document.addEventListener('click', ev => {
+  if (!estado.datos || estado.ui.pestana !== 'apuntes') return;
+  const a = apunteAbierto();
+  const col = ev.target.closest('[data-peg-color]'), borrar = ev.target.closest('[data-peg-borrar]');
+  if (!a || !(col || borrar)) return;
+  const id = (col || borrar).dataset[col ? 'pegColor' : 'pegBorrar'];
+  const p = a.pegatinas.find(x => x.id === id);
+  if (!p) return;
+  if (col) p.color = ((p.color | 0) + 1) % PAL_NOTAS.length;
+  else {
+    if (p.texto.trim() && !confirm('¿Quitar esta pegatina?')) return;
+    a.pegatinas = a.pegatinas.filter(x => x !== p);
+  }
+  cambioApunte(a);
+  render();
+});
+document.addEventListener('change', ev => {
+  if (!estado.datos) return;
+  const s = ev.target.dataset;
+  if (s.fmtSel) {
+    const v = ev.target.value;
+    ev.target.value = '';
+    if (v) formatear(s.fmtSel, v);
+  }
+  if (s.imagenInput !== undefined) {
+    const files = [...ev.target.files];
+    ev.target.value = '';
+    insertarImagenes(files);
+  }
+});
+// Al pegar se limpia el formato raro que traen otras páginas, y las
+// imágenes copiadas o arrastradas se agregan a la nota.
+document.addEventListener('paste', ev => {
+  const c = ev.target.closest?.('[data-apunte-cuerpo]');
+  if (!c) return;
+  const dt = ev.clipboardData;
+  const files = [...dt.files].filter(f => f.type.startsWith('image/'));
+  ev.preventDefault();
+  if (files.length) return insertarImagenes(files);
+  const html = dt.getData('text/html');
+  if (html) document.execCommand('insertHTML', false, limpiarHTML(html));
+  else document.execCommand('insertText', false, dt.getData('text/plain'));
+  alEditarCuerpo(c);
+});
+document.addEventListener('dragover', ev => { if (ev.target.closest?.('[data-apunte-cuerpo]')) ev.preventDefault(); });
+document.addEventListener('drop', ev => {
+  const c = ev.target.closest?.('[data-apunte-cuerpo]');
+  if (!c || !ev.dataTransfer.files.length) return;
+  ev.preventDefault();
+  const r = document.caretRangeFromPoint?.(ev.clientX, ev.clientY);
+  if (r) rangoApunte = r;
+  insertarImagenes(ev.dataTransfer.files);
+});
+document.addEventListener('keydown', ev => {
+  if (!(ev.ctrlKey || ev.metaKey) || ev.key.toLowerCase() !== 's' || !estado.datos) return;
+  const a = estado.ui.pestana === 'apuntes' && apunteAbierto();
+  if (!a) return;
+  ev.preventDefault();
+  guardarApunteYa(a);
+});
 
 /* ------------------------------------------------------------------ */
 /* acciones                                                            */
@@ -1183,19 +1550,23 @@ const ACCIONES = {
   },
   modoHab: i => { estado.ui.modoHab = i; },
   nuevoApunte: () => seguro(async () => {
-    descartarApunteVacio();
-    const a = await db.crear('apuntes', { texto: '', actualizado_en: new Date().toISOString() });
+    salirDeApunte();
+    const a = await db.crear('apuntes', { titulo: '', texto: '', contenido: '', pegatinas: [], actualizado_en: new Date().toISOString() });
     D().apuntes.unshift(a);
     estado.ui.apunte = a.id;
-    // Se deja el cursor listo para escribir.
-    setTimeout(() => $('[data-apunte-texto]')?.focus());
+    // Se deja el cursor listo para escribir el título.
+    setTimeout(() => $('[data-apunte-titulo]')?.focus());
   }),
-  cerrarApunte: () => { descartarApunteVacio(); estado.ui.apunte = null; },
+  cerrarApunte: () => { salirDeApunte(); estado.ui.apunte = null; },
+  guardarApunte: async () => {
+    const a = apunteAbierto();
+    if (a && await guardarApunteYa(a)) aviso('Nota guardada.');
+  },
   borrarApunte: () => seguro(async () => {
     const id = estado.ui.apunte;
     const a = D().apuntes.find(x => x.id === id);
     if (!a) return;
-    if (String(a.texto || '').trim() && !confirm('¿Eliminar la nota "' + tituloApunte(a) + '"? No se puede deshacer.')) return;
+    if (!apunteVacio(a) && !confirm('¿Eliminar la nota "' + tituloApunte(a) + '"? No se puede deshacer.')) return;
     quitar('apuntes', id);
     estado.ui.apunte = null;
     await db.borrar('apuntes', id);
@@ -1363,7 +1734,7 @@ document.addEventListener('click', async ev => {
   const s = el.dataset;
 
   if (s.apunte) {
-    descartarApunteVacio(s.apunte);
+    salirDeApunte(s.apunte);
     estado.ui.apunte = s.apunte;
     return render();
   }
@@ -1380,8 +1751,8 @@ document.addEventListener('click', async ev => {
   // al <input type="file"> justo cuando se abre el selector del sistema.
   if (s.acc === 'importarClick') { $('#importFile')?.click(); return; }
   if (s.acc) { await ACCIONES[s.acc]?.(s.i); return render(); }
-  if (s.tab) { if (s.tab !== 'apuntes') descartarApunteVacio(); Object.assign(estado.ui, { pestana: s.tab, selDia: null, proyecto: null, q: '', editando: null, panelRecordatorios: false, panelCuenta: false }); return render(); }
-  if (s.ir) { Object.assign(estado.ui, JSON.parse(s.ir), { q: '', panelRecordatorios: false, panelCuenta: false }); return render(); }
+  if (s.tab) { salirDeApunte(); Object.assign(estado.ui, { pestana: s.tab, apunte: null, selDia: null, proyecto: null, q: '', editando: null, panelRecordatorios: false, panelCuenta: false }); return render(); }
+  if (s.ir) { salirDeApunte(); Object.assign(estado.ui, { apunte: null }, JSON.parse(s.ir), { q: '', panelRecordatorios: false, panelCuenta: false }); return render(); }
   if (s.dia) { estado.ui.selDia = s.dia; return render(); }
   if (s.proyecto) { estado.ui.proyecto = s.proyecto; return render(); }
 
@@ -1427,16 +1798,17 @@ document.addEventListener('input', ev => {
     n.texto = ev.target.value;
     return db.guardarConRetardo('n' + n.id, () => seguro(() => db.actualizar('notas', n.id, { texto: n.texto })));
   }
-  if (s.apunteTexto) {
-    const a = D().apuntes.find(x => x.id === s.apunteTexto);
-    a.texto = ev.target.value;
-    a.actualizado_en = new Date().toISOString();
-    const item = $(`[data-apunte="${a.id}"]`);
-    if (item) {
-      item.querySelector('[data-titulo]').textContent = tituloApunte(a);
-      item.querySelector('[data-adelanto]').textContent = adelantoApunte(a) || 'Sin más texto';
-    }
-    return db.guardarConRetardo('a' + a.id, () => seguro(() => db.actualizar('apuntes', a.id, { texto: a.texto, actualizado_en: a.actualizado_en })));
+  if (s.apunteCuerpo) return alEditarCuerpo(ev.target);
+  if (s.apunteTitulo) {
+    const a = D().apuntes.find(x => x.id === s.apunteTitulo);
+    a.titulo = ev.target.value;
+    return cambioApunte(a);
+  }
+  if (s.pegTexto) {
+    const a = apunteAbierto(), p = a?.pegatinas.find(x => x.id === s.pegTexto);
+    if (!p) return;
+    p.texto = ev.target.value;
+    return cambioApunte(a);
   }
   if (s.desc) {
     const p = D().proyectos.find(x => x.id === s.desc);
